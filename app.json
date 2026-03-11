@@ -15,6 +15,7 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.smartatech.tracker",
       "adaptiveIcon": {
         "backgroundColor": "#2196F3",
         "foregroundImage": "./assets/android-icon-foreground.png",
