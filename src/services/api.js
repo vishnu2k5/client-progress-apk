@@ -3,8 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
 // Update this to your server URL
-// const API_URL = 'https://client-progress.onrender.com';
-const API_URL = 'http://localhost:3000';
+const API_URL = 'https://client-progress.onrender.com';
+// const API_URL = 'http://localhost:3000';
 
 const api = axios.create({
   baseURL: API_URL,
