@@ -10,31 +10,31 @@ import {
   ActivityIndicator,
   RefreshControl,
   Platform,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { getClients, addClient, getAllProgress, setAuthFailureHandler } from '../services/api';
+import { getClients, addClient, getAllProgress, setAuthFailureHandler, getMe } from '../services/api';
 import { showToast } from '../components/Toast';
+import { useTheme } from '../context/ThemeContext';
 
 export default function HomeScreen({ navigation }) {
+  const t = useTheme();
   const [clients, setClients] = useState([]);
   const [search, setSearch] = useState('');
   const [newClientName, setNewClientName] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [orgName, setOrgName] = useState('');
+  const [orgLogo, setOrgLogo] = useState(null);
 
-  // Derive filtered list from clients + search (no stale state)
   const filteredClients = useMemo(() => {
     if (!search.trim()) return clients;
     const query = search.toLowerCase();
-    return clients.filter((c) =>
-      c.clientName.toLowerCase().includes(query)
-    );
+    return clients.filter((c) => c.clientName.toLowerCase().includes(query));
   }, [clients, search]);
 
-  // Register auth failure handler to redirect to Login on 401
   useFocusEffect(
     useCallback(() => {
       setAuthFailureHandler(() => navigation.replace('Login'));
@@ -45,8 +45,30 @@ export default function HomeScreen({ navigation }) {
 
   const loadData = async () => {
     try {
-      const name = await AsyncStorage.getItem('orgName');
+      const [name, logo] = await Promise.all([
+        AsyncStorage.getItem('orgName'),
+        AsyncStorage.getItem('orgLogo'),
+      ]);
       setOrgName(name || 'Organization');
+      setOrgLogo(logo || null);
+
+      // Refresh org info from server (logo may have changed on profile)
+      try {
+        const meRes = await getMe();
+        const org = meRes.data.organization;
+        if (org.organizationName) {
+          setOrgName(org.organizationName);
+          await AsyncStorage.setItem('orgName', org.organizationName);
+        }
+        if (org.logo) {
+          setOrgLogo(org.logo);
+          await AsyncStorage.setItem('orgLogo', org.logo);
+        } else {
+          setOrgLogo(null);
+          await AsyncStorage.removeItem('orgLogo');
+        }
+      } catch {}
+
       await loadClients();
     } catch (error) {
       showToast('Error loading data', 'error');
@@ -57,18 +79,15 @@ export default function HomeScreen({ navigation }) {
     try {
       const [clientsRes, progressRes] = await Promise.all([getClients(), getAllProgress()]);
       const deliveredMap = {};
-      progressRes.data.forEach(p => {
+      progressRes.data.forEach((p) => {
         const cId = p.clientId?._id || p.clientId;
         if (cId) deliveredMap[cId] = !!p.delivered;
       });
-      const merged = clientsRes.data.map(c => ({ ...c, delivered: deliveredMap[c._id] || false }));
+      const merged = clientsRes.data.map((c) => ({ ...c, delivered: deliveredMap[c._id] || false }));
       setClients(merged);
     } catch (error) {
-      if (error.response?.status === 401) {
-        navigation.replace('Login');
-      } else {
-        showToast('Error loading clients', 'error');
-      }
+      if (error.response?.status === 401) navigation.replace('Login');
+      else showToast('Error loading clients', 'error');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -80,7 +99,6 @@ export default function HomeScreen({ navigation }) {
       showToast('Please enter client name', 'error');
       return;
     }
-
     try {
       await addClient(newClientName.trim());
       setNewClientName('');
@@ -93,14 +111,11 @@ export default function HomeScreen({ navigation }) {
 
   const handleLogout = useCallback(() => {
     const doLogout = async () => {
-      await AsyncStorage.multiRemove(['token', 'orgName']);
+      await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       navigation.replace('Login');
     };
-
     if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to logout?')) {
-        doLogout();
-      }
+      if (window.confirm('Are you sure you want to logout?')) doLogout();
     } else {
       Alert.alert('Logout', 'Are you sure you want to logout?', [
         { text: 'Cancel', style: 'cancel' },
@@ -109,61 +124,68 @@ export default function HomeScreen({ navigation }) {
     }
   }, [navigation]);
 
-  const renderClient = useCallback(({ item }) => (
-    <TouchableOpacity
-      style={styles.clientCard}
-      onPress={() => navigation.navigate('Progress', { clientId: item._id, clientName: item.clientName })}
-    >
-      <View style={styles.clientIcon}>
-        <Text style={styles.clientIconText}>🏢</Text>
-      </View>
-      <View style={styles.clientInfo}>
-        <Text style={styles.clientName}>{item.clientName}</Text>
-        <Text style={styles.clientDate}>
-          Added {new Date(item.createdAt).toLocaleDateString()}
-        </Text>
-      </View>
-      {item.delivered && (
-        <View style={styles.deliveredBadge}>
-          <Text style={styles.deliveredTick}>✓</Text>
+  const renderClient = useCallback(
+    ({ item }) => (
+      <TouchableOpacity
+        style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.border }]}
+        onPress={() => navigation.navigate('Progress', { clientId: item._id, clientName: item.clientName })}
+      >
+        <View style={[styles.clientIcon, { backgroundColor: t.accentLight }]}>
+          <Text style={styles.clientIconText}>🏢</Text>
         </View>
-      )}
-      <Text style={styles.arrow}>›</Text>
-    </TouchableOpacity>
-  ), [navigation]);
+        <View style={styles.clientInfo}>
+          <Text style={[styles.clientName, { color: t.text }]}>{item.clientName}</Text>
+          <Text style={[styles.clientDate, { color: t.subText }]}>
+            Added {new Date(item.createdAt).toLocaleDateString()}
+          </Text>
+        </View>
+        {item.delivered && (
+          <View style={[styles.deliveredBadge, { backgroundColor: t.accentLight }]}>
+            <Text style={[styles.deliveredTick, { color: t.accent }]}>✓</Text>
+          </View>
+        )}
+        <Text style={[styles.arrow, { color: t.subText }]}>›</Text>
+      </TouchableOpacity>
+    ),
+    [navigation, t]
+  );
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#22c55e" />
+      <View style={[styles.loadingContainer, { backgroundColor: t.bg }]}>
+        <ActivityIndicator size="large" color={t.accent} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+      <View style={[styles.header, { backgroundColor: t.headerBg, borderColor: t.border }]}>
         <View style={styles.headerLeft}>
-          <View style={styles.orgIcon}>
-            <Text style={styles.orgIconText}>🏢</Text>
-          </View>
-          <Text style={styles.orgName}>{orgName}</Text>
+          {orgLogo ? (
+            <Image source={{ uri: orgLogo }} style={styles.orgLogoImage} />
+          ) : (
+            <View style={[styles.orgIcon, { backgroundColor: t.accentLight }]}>
+              <Text style={styles.orgIconText}>🏢</Text>
+            </View>
+          )}
+          <Text style={[styles.orgName, { color: t.text }]}>{orgName}</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.profileBtn} onPress={() => navigation.navigate('Profile')}>
+          <TouchableOpacity style={[styles.profileBtn, { backgroundColor: t.accentLight }]} onPress={() => navigation.navigate('Profile')}>
             <Text style={styles.profileText}>👤</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.logoutText}>⏻</Text>
+          <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: t.dangerBg }]} onPress={handleLogout}>
+            <Text style={[styles.logoutText, { color: t.danger }]}>⏻</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       <View style={styles.searchContainer}>
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { backgroundColor: t.cardBg, color: t.text, borderColor: t.border }]}
           placeholder="🔍 Search clients..."
-          placeholderTextColor="#4a4a6a"
+          placeholderTextColor={t.subText}
           value={search}
           onChangeText={setSearch}
         />
@@ -171,18 +193,18 @@ export default function HomeScreen({ navigation }) {
 
       <View style={styles.addContainer}>
         <TextInput
-          style={styles.addInput}
+          style={[styles.addInput, { backgroundColor: t.cardBg, color: t.text, borderColor: t.border }]}
           placeholder="New client name..."
-          placeholderTextColor="#4a4a6a"
+          placeholderTextColor={t.subText}
           value={newClientName}
           onChangeText={setNewClientName}
         />
-        <TouchableOpacity style={styles.addBtn} onPress={handleAddClient}>
+        <TouchableOpacity style={[styles.addBtn, { backgroundColor: t.accent }]} onPress={handleAddClient}>
           <Text style={styles.addBtnText}>+</Text>
         </TouchableOpacity>
       </View>
 
-      <Text style={styles.sectionTitle}>Clients ({filteredClients.length})</Text>
+      <Text style={[styles.sectionTitle, { color: t.text }]}>Clients ({filteredClients.length})</Text>
 
       <FlatList
         data={filteredClients}
@@ -197,14 +219,14 @@ export default function HomeScreen({ navigation }) {
               setRefreshing(true);
               loadClients();
             }}
-            colors={['#22c55e']}
-            tintColor="#22c55e"
+            colors={[t.accent]}
+            tintColor={t.accent}
           />
         }
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No clients found</Text>
-            <Text style={styles.emptySubtext}>Add your first client above</Text>
+            <Text style={[styles.emptyText, { color: t.textSecondary }]}>No clients found</Text>
+            <Text style={[styles.emptySubtext, { color: t.subText }]}>Add your first client above</Text>
           </View>
         }
       />
@@ -213,195 +235,45 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0f0f1a',
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#1a1a2e',
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
     borderBottomWidth: 1,
-    borderColor: '#2a2a3e',
   },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  orgIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  orgIconText: {
-    fontSize: 22,
-  },
-  orgName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  logoutBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  logoutText: {
-    fontSize: 20,
-    color: '#ef4444',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  profileBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  profileText: {
-    fontSize: 20,
-  },
-  searchContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-  },
-  searchInput: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 15,
-    padding: 15,
-    fontSize: 16,
-    color: '#e2e8f0',
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-  },
-  addContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 20,
-    paddingTop: 15,
-    gap: 10,
-  },
-  addInput: {
-    flex: 1,
-    backgroundColor: '#1a1a2e',
-    borderRadius: 15,
-    padding: 15,
-    fontSize: 16,
-    color: '#e2e8f0',
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-  },
-  addBtn: {
-    width: 54,
-    height: 54,
-    borderRadius: 15,
-    backgroundColor: '#22c55e',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  addBtnText: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: '300',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#e2e8f0',
-    paddingHorizontal: 20,
-    paddingTop: 25,
-    paddingBottom: 15,
-  },
-  listContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  clientCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a2e',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-  },
-  clientIcon: {
-    width: 50,
-    height: 50,
-    borderRadius: 12,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clientIconText: {
-    fontSize: 24,
-  },
-  clientInfo: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  clientName: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  clientDate: {
-    fontSize: 13,
-    color: '#4a4a6a',
-    marginTop: 3,
-  },
-  deliveredBadge: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(34, 197, 94, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  deliveredTick: {
-    fontSize: 16,
-    color: '#22c55e',
-    fontWeight: 'bold',
-  },
-  arrow: {
-    fontSize: 24,
-    color: '#4a4a6a',
-    fontWeight: '300',
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    paddingTop: 60,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#4a4a6a',
-    marginTop: 5,
-  },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  orgIcon: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  orgIconText: { fontSize: 22 },
+  orgLogoImage: { width: 42, height: 42, borderRadius: 12 },
+  orgName: { fontSize: 20, fontWeight: 'bold' },
+  logoutBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  logoutText: { fontSize: 20 },
+  headerActions: { flexDirection: 'row', gap: 10 },
+  profileBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  profileText: { fontSize: 20 },
+  searchContainer: { paddingHorizontal: 20, paddingTop: 20 },
+  searchInput: { borderRadius: 15, padding: 15, fontSize: 16, borderWidth: 1 },
+  addContainer: { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 15, gap: 10 },
+  addInput: { flex: 1, borderRadius: 15, padding: 15, fontSize: 16, borderWidth: 1 },
+  addBtn: { width: 54, height: 54, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  addBtnText: { fontSize: 28, color: '#fff', fontWeight: '300' },
+  sectionTitle: { fontSize: 18, fontWeight: '600', paddingHorizontal: 20, paddingTop: 25, paddingBottom: 15 },
+  listContent: { paddingHorizontal: 20, paddingBottom: 20 },
+  clientCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 15, padding: 15, marginBottom: 12, borderWidth: 1 },
+  clientIcon: { width: 50, height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  clientIconText: { fontSize: 24 },
+  clientInfo: { flex: 1, marginLeft: 15 },
+  clientName: { fontSize: 17, fontWeight: '600' },
+  clientDate: { fontSize: 13, marginTop: 3 },
+  deliveredBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
+  deliveredTick: { fontSize: 16, fontWeight: 'bold' },
+  arrow: { fontSize: 24, fontWeight: '300' },
+  emptyContainer: { alignItems: 'center', paddingTop: 60 },
+  emptyText: { fontSize: 18, fontWeight: '600' },
+  emptySubtext: { fontSize: 14, marginTop: 5 },
 });

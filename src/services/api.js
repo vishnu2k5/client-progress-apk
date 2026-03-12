@@ -1,8 +1,10 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // Update this to your server URL
-const API_URL = 'https://client-progress.onrender.com';
+// const API_URL = 'https://client-progress.onrender.com';
+const API_URL = 'http://localhost:3000';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -35,7 +37,7 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
-      await AsyncStorage.multiRemove(['token', 'orgName']);
+      await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       if (onAuthFailure) onAuthFailure();
     }
     return Promise.reject(error);
@@ -44,9 +46,71 @@ api.interceptors.response.use(
 
 // Auth APIs
 export const login = (email, password) => api.post('/auth/login', { email, password });
-export const register = (data) => api.post('/auth/register', data);
+
+// Helper: upload with FormData via fetch (axios 1.x mangles multipart headers)
+const fetchMultipart = async (path, method, formData) => {
+  const token = await AsyncStorage.getItem('token');
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  // Do NOT set Content-Type — fetch/RN will set the correct multipart boundary
+  const res = await fetch(`${API_URL}${path}`, {
+    method,
+    body: formData,
+    headers,
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    const err = new Error(json.message || 'Request failed');
+    err.response = { data: json, status: res.status };
+    throw err;
+  }
+  return { data: json };
+};
+
+// Build a FormData with text fields + optional image file
+const buildFormData = async (data, logoFile) => {
+  const formData = new FormData();
+  Object.keys(data).forEach((key) => {
+    if (data[key] !== undefined && data[key] !== null) {
+      formData.append(key, data[key]);
+    }
+  });
+  if (logoFile) {
+    if (Platform.OS === 'web') {
+      // On web, convert the URI (blob/data URL) to an actual File/Blob
+      const response = await fetch(logoFile.uri);
+      const blob = await response.blob();
+      const fileName = logoFile.fileName || `logo-${Date.now()}.jpg`;
+      const file = new File([blob], fileName, {
+        type: logoFile.mimeType || logoFile.type || blob.type || 'image/jpeg',
+      });
+      formData.append('logo', file);
+    } else {
+      // On React Native (iOS/Android), use the RN-style object
+      formData.append('logo', {
+        uri: logoFile.uri,
+        name: logoFile.fileName || `logo-${Date.now()}.jpg`,
+        type: logoFile.mimeType || logoFile.type || 'image/jpeg',
+      });
+    }
+  }
+  return formData;
+};
+
+export const register = async (data, logoFile) => {
+  if (!logoFile) return api.post('/auth/register', data);
+  const formData = await buildFormData(data, logoFile);
+  return fetchMultipart('/auth/register', 'POST', formData);
+};
+
 export const getMe = () => api.get('/auth/me');
-export const updateProfile = (data) => api.put('/auth/update', data);
+
+export const updateProfile = async (data, logoFile) => {
+  if (!logoFile) return api.put('/auth/update', data);
+  const formData = await buildFormData(data, logoFile);
+  return fetchMultipart('/auth/update', 'PUT', formData);
+};
+
 export const changePassword = (currentPassword, newPassword) =>
   api.put('/auth/change-password', { currentPassword, newPassword });
 

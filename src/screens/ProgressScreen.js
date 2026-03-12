@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getProgress, updateProgress, deleteClient, updateClient } from '../services/api';
 import { showToast } from '../components/Toast';
+import { useTheme } from '../context/ThemeContext';
 
 const STAGES = [
   { key: 'Lead', label: 'Lead' },
@@ -24,7 +25,11 @@ const STAGES = [
   { key: 'order', label: 'Order', isOrder: true },
 ];
 
+const LABEL_W = 105;
+const DOT_W = 40;
+
 export default function ProgressScreen({ route, navigation }) {
+  const t = useTheme();
   const { clientId, clientName: initialName } = route.params;
   const [progress, setProgress] = useState({});
   const [loading, setLoading] = useState(true);
@@ -44,47 +49,37 @@ export default function ProgressScreen({ route, navigation }) {
       const res = await getProgress(clientId);
       const data = res.data[0] || {};
       setProgress(data);
-      
-      // Initialize inputs with current values
-      const initialInputs = {};
-      STAGES.forEach(stage => {
-        const stageData = data[stage.key] || {};
-        initialInputs[`${stage.key}-assignee`] = stageData.assignee || '';
-        if (stage.isOrder) {
-          initialInputs[`${stage.key}-value`] = stageData.value?.toString() || '';
-        } else {
-          initialInputs[`${stage.key}-date`] = stageData.date || '';
-        }
+      const init = {};
+      STAGES.forEach((s) => {
+        const d = data[s.key] || {};
+        init[`${s.key}-assignee`] = d.assignee || '';
+        if (s.isOrder) init[`${s.key}-value`] = d.value?.toString() || '';
+        else init[`${s.key}-date`] = d.date || '';
       });
-      setInputs(initialInputs);
+      setInputs(init);
     } catch (error) {
       showToast('Error loading progress', 'error');
     }
     setLoading(false);
   };
 
-  const getTodayDate = () => {
-    return new Date().toISOString().split('T')[0];
-  };
+  const getTodayDate = () => new Date().toISOString().split('T')[0];
 
   const handleSave = async (stageKey, isOrder) => {
     setSaving(stageKey);
     try {
       const assignee = inputs[`${stageKey}-assignee`] || null;
       let stageData = { assignee };
-      
       if (isOrder) {
-        const value = inputs[`${stageKey}-value`];
-        stageData.value = value ? Number(value) : null;
+        const v = inputs[`${stageKey}-value`];
+        stageData.value = v ? Number(v) : null;
       } else {
-        const date = inputs[`${stageKey}-date`];
-        stageData.date = date || getTodayDate();
-        // Update input to show the date
-        setInputs(prev => ({ ...prev, [`${stageKey}-date`]: stageData.date }));
+        const d = inputs[`${stageKey}-date`];
+        stageData.date = d || getTodayDate();
+        setInputs((prev) => ({ ...prev, [`${stageKey}-date`]: stageData.date }));
       }
-      
       await updateProgress(clientId, { [stageKey]: stageData });
-      setProgress(prev => ({ ...prev, [stageKey]: stageData }));
+      setProgress((prev) => ({ ...prev, [stageKey]: stageData }));
       showToast('Saved!', 'success');
     } catch (error) {
       showToast('Error saving', 'error');
@@ -96,7 +91,7 @@ export default function ProgressScreen({ route, navigation }) {
     const newStatus = !progress.delivered;
     try {
       await updateProgress(clientId, { delivered: newStatus });
-      setProgress(prev => ({ ...prev, delivered: newStatus }));
+      setProgress((prev) => ({ ...prev, delivered: newStatus }));
       showToast(newStatus ? 'Marked as Delivered!' : 'Marked as Pending', 'success');
     } catch (error) {
       showToast('Error updating status', 'error');
@@ -135,68 +130,70 @@ export default function ProgressScreen({ route, navigation }) {
         showToast('Error deleting client', 'error');
       }
     };
-
     if (Platform.OS === 'web') {
-      if (window.confirm('Are you sure you want to delete this client? This action cannot be undone.')) {
-        doDelete();
-      }
+      if (window.confirm('Delete this client? This action cannot be undone.')) doDelete();
     } else {
-      Alert.alert(
-        'Delete Client',
-        'Are you sure you want to delete this client? This action cannot be undone.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: doDelete },
-        ]
-      );
+      Alert.alert('Delete Client', 'Delete this client? This action cannot be undone.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      ]);
     }
   };
 
-  const updateInput = (key, value) => {
-    setInputs(prev => ({ ...prev, [key]: value }));
-  };
+  const updateInput = (key, value) => setInputs((prev) => ({ ...prev, [key]: value }));
 
   const hasValue = (stageKey, isOrder) => {
-    const stageData = progress[stageKey];
-    if (!stageData) return false;
-    if (isOrder) return !!(stageData.assignee || stageData.value);
-    return !!(stageData.assignee || stageData.date);
+    const d = progress[stageKey];
+    if (!d) return false;
+    return isOrder ? !!(d.assignee || d.value) : !!(d.assignee || d.date);
   };
+
+  const firstIncomplete = STAGES.findIndex((s) => !hasValue(s.key, s.isOrder));
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#22c55e" />
+      <View style={[styles.center, { backgroundColor: t.bg }]}>
+        <ActivityIndicator size="large" color={t.primary} />
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.flex1, { backgroundColor: t.bg }]}>
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: t.headerBg, borderBottomColor: t.border }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.backText}>←</Text>
+          <Text style={[styles.backText, { color: t.text }]}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Client Progress</Text>
+        <Text style={[styles.headerTitle, { color: t.text }]}>Client Progress</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.clientCard}>
-          <View style={styles.clientIcon}>
+      <ScrollView
+        style={styles.flex1}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Client Card */}
+        <View style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.border }]}>
+          <View style={[styles.clientIcon, { backgroundColor: t.iconBg }]}>
             <Text style={styles.clientIconText}>🏢</Text>
           </View>
           <View style={styles.clientInfo}>
-            <Text style={styles.clientLabel}>CLIENT PROGRESS</Text>
+            <Text style={[styles.clientLabel, { color: t.subText }]}>CLIENT PROGRESS</Text>
             {editingName ? (
               <View style={styles.editNameRow}>
                 <TextInput
-                  style={styles.editNameInput}
+                  style={[styles.editNameInput, { backgroundColor: t.inputBg, borderColor: t.primary, color: t.text }]}
                   value={clientNameInput}
                   onChangeText={setClientNameInput}
                   autoFocus
                 />
-                <TouchableOpacity style={styles.editNameSave} onPress={handleEditName} disabled={savingName}>
+                <TouchableOpacity
+                  style={[styles.editNameSave, { backgroundColor: t.primary }]}
+                  onPress={handleEditName}
+                  disabled={savingName}
+                >
                   {savingName ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
@@ -204,123 +201,129 @@ export default function ProgressScreen({ route, navigation }) {
                   )}
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.editNameCancel}
+                  style={[styles.editNameCancel, { backgroundColor: t.dangerBg }]}
                   onPress={() => { setEditingName(false); setClientNameInput(currentName); }}
                 >
-                  <Text style={styles.editNameCancelText}>✕</Text>
+                  <Text style={[styles.editNameCancelText, { color: t.danger }]}>✕</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <TouchableOpacity onPress={() => setEditingName(true)} style={styles.nameRow}>
-                <Text style={styles.clientName}>{currentName}</Text>
+                <Text style={[styles.clientName, { color: t.text }]}>{currentName}</Text>
                 <Text style={styles.editIcon}>✏️</Text>
               </TouchableOpacity>
             )}
           </View>
         </View>
 
+        {/* Pipeline */}
         <View style={styles.pipeline}>
-          <View style={styles.pipelineLine} />
-          
+          <View style={[styles.pipelineLine, { backgroundColor: t.line }]} />
+
           {STAGES.map((stage, index) => {
             const hasVal = hasValue(stage.key, stage.isOrder);
-            const isActive = index === 0 || hasVal;
-            
+            const isActive = index === firstIncomplete;
+
+            const dotBorderColor = hasVal ? t.accent : isActive ? t.primary : t.dotBorder;
+            const dotBgColor = hasVal ? t.accent : isActive ? t.primary : t.dotBg;
+            const labelColor = hasVal ? t.accent : isActive ? t.primary : t.subText;
+
             return (
-              <View key={stage.key} style={styles.stageItem}>
-                <View style={[
-                  styles.stageDot,
-                  hasVal && styles.stageDotCompleted,
-                  !hasVal && isActive && styles.stageDotActive,
-                ]}>
-                  {hasVal && <View style={styles.stageDotInner} />}
-                </View>
-                
-                <View style={styles.stageContent}>
-                  <Text style={[
-                    styles.stageLabel,
-                    hasVal && styles.stageLabelCompleted,
-                    !hasVal && isActive && styles.stageLabelActive,
-                  ]}>
+              <View key={stage.key} style={styles.stageRow}>
+                {/* Label */}
+                <View style={styles.labelWrap}>
+                  <Text style={[styles.stageLabel, { color: labelColor }]} numberOfLines={2}>
                     {stage.label}
                   </Text>
-                  
-                  <View style={styles.inputRow}>
-                    <TextInput
-                      style={[
-                        styles.input,
-                        inputs[`${stage.key}-assignee`] && styles.inputHasValue,
-                        hasVal && styles.inputDisabled,
-                      ]}
-                      placeholder="Assign to..."
-                      placeholderTextColor="#4a4a6a"
-                      value={inputs[`${stage.key}-assignee`]}
-                      onChangeText={(val) => updateInput(`${stage.key}-assignee`, val)}
-                      editable={!hasVal}
-                    />
-                    {!hasVal && (
-                      <TouchableOpacity
-                        style={styles.saveBtn}
-                        onPress={() => handleSave(stage.key, stage.isOrder)}
-                        disabled={saving === stage.key}
-                      >
-                        {saving === stage.key ? (
-                          <ActivityIndicator size="small" color="#fff" />
-                        ) : (
-                          <Text style={styles.saveBtnText}>➤</Text>
-                        )}
-                      </TouchableOpacity>
-                    )}
+                </View>
+
+                {/* Dot */}
+                <View style={styles.dotWrap}>
+                  <View style={[styles.dot, { backgroundColor: dotBgColor, borderColor: dotBorderColor }]}>
+                    {(hasVal || isActive) && <View style={styles.dotInner} />}
                   </View>
-                  
-                  <View style={styles.inputRow}>
-                    {stage.isOrder ? (
+                </View>
+
+                {/* Content */}
+                <View style={styles.stageContent}>
+                  {hasVal ? (
+                    <View style={[styles.doneBox, { backgroundColor: t.accentBg, borderColor: t.accent }]}>
+                      {progress[stage.key]?.assignee ? (
+                        <Text style={[styles.doneText, { color: t.accent }]}>
+                          {progress[stage.key].assignee}
+                        </Text>
+                      ) : null}
+                      <Text style={[styles.doneSub, { color: t.subText }]}>
+                        {stage.isOrder
+                          ? `Value: ${progress[stage.key]?.value ?? '—'}`
+                          : progress[stage.key]?.date || ''}
+                      </Text>
+                    </View>
+                  ) : isActive ? (
+                    <View>
+                      <View style={styles.inputRow}>
+                        <TextInput
+                          style={[
+                            styles.input,
+                            {
+                              backgroundColor: t.inputBg,
+                              borderColor: inputs[`${stage.key}-assignee`] ? t.primary : t.inputBorder,
+                              color: t.text,
+                            },
+                          ]}
+                          placeholder="Assign to..."
+                          placeholderTextColor={t.placeholder}
+                          value={inputs[`${stage.key}-assignee`]}
+                          onChangeText={(v) => updateInput(`${stage.key}-assignee`, v)}
+                        />
+                        <TouchableOpacity
+                          style={[styles.saveBtn, { backgroundColor: t.primary }]}
+                          onPress={() => handleSave(stage.key, stage.isOrder)}
+                          disabled={saving === stage.key}
+                        >
+                          {saving === stage.key ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : (
+                            <Text style={styles.saveBtnText}>➤</Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
                       <TextInput
-                        style={[
-                          styles.input,
-                          inputs[`${stage.key}-value`] && styles.inputHasValue,
-                          hasVal && styles.inputDisabled,
-                        ]}
-                        placeholder="Order Value"
-                        placeholderTextColor="#4a4a6a"
-                        value={inputs[`${stage.key}-value`]}
-                        onChangeText={(val) => updateInput(`${stage.key}-value`, val)}
-                        keyboardType="numeric"
-                        editable={!hasVal}
+                        style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+                        placeholder={stage.isOrder ? 'Order Value' : 'YYYY-MM-DD'}
+                        placeholderTextColor={t.placeholder}
+                        value={stage.isOrder ? inputs[`${stage.key}-value`] : inputs[`${stage.key}-date`]}
+                        onChangeText={(v) =>
+                          updateInput(stage.isOrder ? `${stage.key}-value` : `${stage.key}-date`, v)
+                        }
+                        keyboardType={stage.isOrder ? 'numeric' : 'default'}
                       />
-                    ) : (
-                      <TextInput
-                        style={[
-                          styles.input,
-                          inputs[`${stage.key}-date`] && styles.inputHasValue,
-                          hasVal && styles.inputDisabled,
-                        ]}
-                        placeholder="YYYY-MM-DD"
-                        placeholderTextColor="#4a4a6a"
-                        value={inputs[`${stage.key}-date`]}
-                        onChangeText={(val) => updateInput(`${stage.key}-date`, val)}
-                        editable={!hasVal}
-                      />
-                    )}
-                  </View>
+                    </View>
+                  ) : (
+                    <View style={[styles.pendingBox, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}>
+                      <Text style={[styles.pendingText, { color: t.placeholder }]}>Pending</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             );
           })}
         </View>
 
-        <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-          <Text style={styles.deleteBtnText}>🗑️ Delete Client</Text>
+        {/* Delete */}
+        <TouchableOpacity
+          style={[styles.deleteBtn, { backgroundColor: t.dangerBg, borderColor: t.dangerBorder }]}
+          onPress={handleDelete}
+        >
+          <Text style={[styles.deleteBtnText, { color: t.danger }]}>🗑️ Delete Client</Text>
         </TouchableOpacity>
-        
+
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* Deliver Button */}
       <TouchableOpacity
-        style={[
-          styles.deliverBtn,
-          progress.delivered ? styles.deliverBtnDelivered : styles.deliverBtnPending,
-        ]}
+        style={[styles.deliverBtn, { backgroundColor: progress.delivered ? t.delivered : t.pending }]}
         onPress={handleToggleDelivered}
         disabled={progress.delivered}
       >
@@ -333,258 +336,61 @@ export default function ProgressScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0f0f1a',
-  },
+  flex1: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 15,
-    backgroundColor: '#1a1a2e',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderColor: '#2a2a3e',
   },
-  backBtn: {
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  backText: {
-    fontSize: 24,
-    color: '#e2e8f0',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  clientCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a2e',
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 25,
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-  },
-  clientIcon: {
-    width: 55,
-    height: 55,
-    borderRadius: 12,
-    backgroundColor: 'rgba(34, 197, 94, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  clientIconText: {
-    fontSize: 28,
-  },
-  clientInfo: {
-    marginLeft: 15,
-    flex: 1,
-  },
-  clientLabel: {
-    fontSize: 11,
-    color: '#4a4a6a',
-    letterSpacing: 1,
-  },
-  clientName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#ffffff',
-    marginTop: 3,
-  },
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 3,
-  },
-  editIcon: {
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  editNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 5,
-    gap: 6,
-  },
-  editNameInput: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-    borderWidth: 2,
-    borderColor: '#22c55e',
-    borderRadius: 10,
-    padding: 8,
-    fontSize: 16,
-    color: '#e2e8f0',
-  },
-  editNameSave: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: '#22c55e',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  editNameSaveText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  editNameCancel: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  editNameCancelText: {
-    color: '#ef4444',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  pipeline: {
-    paddingLeft: 30,
-    position: 'relative',
-  },
+  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  backText: { fontSize: 24 },
+  headerTitle: { fontSize: 18, fontWeight: '700' },
+  scrollContent: { padding: 20, paddingBottom: 120 },
+  clientCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 18, marginBottom: 28, borderWidth: 1 },
+  clientIcon: { width: 52, height: 52, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  clientIconText: { fontSize: 26 },
+  clientInfo: { marginLeft: 14, flex: 1 },
+  clientLabel: { fontSize: 11, letterSpacing: 1, fontWeight: '600' },
+  clientName: { fontSize: 20, fontWeight: 'bold', marginTop: 2 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  editIcon: { fontSize: 14, marginLeft: 8 },
+  editNameRow: { flexDirection: 'row', alignItems: 'center', marginTop: 5, gap: 6 },
+  editNameInput: { flex: 1, borderWidth: 2, borderRadius: 10, padding: 8, fontSize: 16 },
+  editNameSave: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  editNameSaveText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  editNameCancel: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  editNameCancelText: { fontSize: 14, fontWeight: '600' },
+  pipeline: { position: 'relative', marginBottom: 10 },
   pipelineLine: {
     position: 'absolute',
-    left: 8,
-    top: 20,
-    bottom: 20,
+    left: LABEL_W + DOT_W / 2 - 1,
+    top: 14,
+    bottom: 14,
     width: 2,
-    backgroundColor: '#2a2a3e',
+    borderRadius: 1,
   },
-  stageItem: {
-    flexDirection: 'row',
-    marginBottom: 20,
-  },
-  stageDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#1a1a2e',
-    borderWidth: 2,
-    borderColor: '#2a2a3e',
-    position: 'absolute',
-    left: -24,
-    top: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  stageDotActive: {
-    borderColor: '#22c55e',
-    backgroundColor: '#22c55e',
-  },
-  stageDotCompleted: {
-    borderColor: '#22c55e',
-    backgroundColor: '#22c55e',
-  },
-  stageDotInner: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#fff',
-  },
-  stageContent: {
-    flex: 1,
-  },
-  stageLabel: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#4a4a6a',
-    marginBottom: 10,
-  },
-  stageLabelActive: {
-    color: '#22c55e',
-  },
-  stageLabelCompleted: {
-    color: '#22c55e',
-  },
-  inputRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-    borderWidth: 1.5,
-    borderColor: '#2a2a3e',
-    borderRadius: 12,
-    padding: 12,
-    fontSize: 15,
-    color: '#e2e8f0',
-  },
-  inputHasValue: {
-    borderColor: '#22c55e',
-    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-  },
-  inputDisabled: {
-    opacity: 0.7,
-  },
-  saveBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: '#22c55e',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  saveBtnCompleted: {
-    backgroundColor: '#16a34a',
-  },
-  saveBtnText: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  deleteBtn: {
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.3)',
-  },
-  deleteBtnText: {
-    color: '#ef4444',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  deliverBtn: {
-    position: 'absolute',
-    bottom: 30,
-    left: 50,
-    right: 50,
-    padding: 18,
-    borderRadius: 30,
-    alignItems: 'center',
-  },
-  deliverBtnPending: {
-    backgroundColor: '#f97316',
-  },
-  deliverBtnDelivered: {
-    backgroundColor: '#22c55e',
-  },
-  deliverBtnText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  stageRow: { flexDirection: 'row', marginBottom: 24, alignItems: 'flex-start' },
+  labelWrap: { width: LABEL_W, paddingRight: 8, alignItems: 'flex-end', paddingTop: 3 },
+  stageLabel: { fontSize: 15, fontWeight: '600', textAlign: 'right' },
+  dotWrap: { width: DOT_W, alignItems: 'center', paddingTop: 1 },
+  dot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2.5, justifyContent: 'center', alignItems: 'center' },
+  dotInner: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
+  stageContent: { flex: 1, paddingLeft: 8 },
+  doneBox: { borderRadius: 12, padding: 12, borderWidth: 1 },
+  doneText: { fontSize: 15, fontWeight: '600' },
+  doneSub: { fontSize: 13, marginTop: 2 },
+  pendingBox: { borderRadius: 12, padding: 14, borderWidth: 1 },
+  pendingText: { fontSize: 15, fontWeight: '500' },
+  inputRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  input: { flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 12, fontSize: 15 },
+  saveBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  saveBtnText: { color: '#fff', fontSize: 16 },
+  deleteBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 12, borderWidth: 1 },
+  deleteBtnText: { fontSize: 16, fontWeight: '600' },
+  deliverBtn: { position: 'absolute', bottom: 30, left: 50, right: 50, padding: 18, borderRadius: 30, alignItems: 'center' },
+  deliverBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

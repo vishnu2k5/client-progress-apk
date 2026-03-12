@@ -8,49 +8,67 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
+  ScrollView,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { login, register } from '../services/api';
 import { showToast } from '../components/Toast';
+import { useTheme } from '../context/ThemeContext';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function LoginScreen({ navigation }) {
+  const t = useTheme();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [organizationName, setOrganizationName] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
+  const [logo, setLogo] = useState(null);
+  const [appLogo, setAppLogo] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const checkAuth = useCallback(async () => {
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (token) {
-        navigation.replace('Home');
-      }
-    } catch {
-      // token check failed, stay on login
-    }
+      const [token, savedAppLogo] = await Promise.all([
+        AsyncStorage.getItem('token'),
+        AsyncStorage.getItem('appLogo'),
+      ]);
+      if (savedAppLogo) setAppLogo(savedAppLogo);
+      if (token) navigation.replace('Home');
+    } catch {}
   }, [navigation]);
 
   useEffect(() => {
     checkAuth();
   }, [checkAuth]);
 
+  const pickLogo = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets?.[0]) {
+      setLogo(result.assets[0]);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim()) {
       showToast('Please fill all required fields', 'error');
       return;
     }
-
     if (!EMAIL_REGEX.test(email.trim())) {
       showToast('Please enter a valid email', 'error');
       return;
     }
-
     if (password.length < 6) {
       showToast('Password must be at least 6 characters', 'error');
       return;
@@ -62,30 +80,74 @@ export default function LoginScreen({ navigation }) {
         const res = await login(email.trim(), password);
         await AsyncStorage.setItem('token', res.data.token);
         await AsyncStorage.setItem('orgName', res.data.organization.organizationName);
+        const orgLogo = res.data.organization.logo;
+        if (orgLogo) {
+          await AsyncStorage.setItem('orgLogo', orgLogo);
+        }
+        setLoading(false);
+        if (orgLogo) {
+          const confirmed = await new Promise((resolve) => {
+            if (Platform.OS === 'web') {
+              resolve(window.confirm('Set your organization logo as the app logo?'));
+            } else {
+              Alert.alert(
+                'App Logo',
+                'Would you like to set your organization logo as the app logo?',
+                [
+                  { text: 'Skip', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Yes', onPress: () => resolve(true) },
+                ],
+                { cancelable: false }
+              );
+            }
+          });
+          if (confirmed) {
+            await AsyncStorage.setItem('appLogo', orgLogo);
+            setAppLogo(orgLogo);
+          }
+        }
         navigation.replace('Home');
       } else {
-        if (!organizationName.trim()) {
-          showToast('Organization name is required', 'error');
-          return;
+        if (!organizationName.trim()) { showToast('Organization name is required', 'error'); setLoading(false); return; }
+        if (!phone.trim()) { showToast('Phone number is required', 'error'); setLoading(false); return; }
+        if (!address.trim()) { showToast('Address is required', 'error'); setLoading(false); return; }
+        const res = await register(
+          {
+            organizationName: organizationName.trim(),
+            email: email.trim(),
+            password,
+            phone: phone.trim(),
+            address: address.trim(),
+          },
+          logo
+        );
+        const regLogo = res.data.organization?.logo;
+        if (regLogo) {
+          setLoading(false);
+          const confirmed = await new Promise((resolve) => {
+            if (Platform.OS === 'web') {
+              resolve(window.confirm('Set your organization logo as the app logo?'));
+            } else {
+              Alert.alert(
+                'App Logo',
+                'Would you like to set your organization logo as the app logo?',
+                [
+                  { text: 'Skip', style: 'cancel', onPress: () => resolve(false) },
+                  { text: 'Yes', onPress: () => resolve(true) },
+                ],
+                { cancelable: false }
+              );
+            }
+          });
+          if (confirmed) {
+            await AsyncStorage.setItem('appLogo', regLogo);
+            setAppLogo(regLogo);
+          }
         }
-        if (!phone.trim()) {
-          showToast('Phone number is required', 'error');
-          return;
-        }
-        if (!address.trim()) {
-          showToast('Address is required', 'error');
-          return;
-        }
-        await register({
-          organizationName: organizationName.trim(),
-          email: email.trim(),
-          password,
-          phone: phone.trim(),
-          address: address.trim(),
-        });
         showToast('Registration successful! Please login.');
         setIsLogin(true);
         setPassword('');
+        setLogo(null);
       }
     } catch (error) {
       const message = error.response?.data?.message
@@ -97,179 +159,175 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
-        <View style={styles.header}>
-          <Text style={styles.logo}>📊</Text>
-          <Text style={styles.title}>Smarta Tech</Text>
-          <Text style={styles.subtitle}>Tracker</Text>
-        </View>
-
-        <View style={styles.form}>
-          <View style={styles.tabContainer}>
-            <TouchableOpacity
-              style={[styles.tab, isLogin && styles.activeTab]}
-              onPress={() => setIsLogin(true)}
-            >
-              <Text style={[styles.tabText, isLogin && styles.activeTabText]}>Login</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tab, !isLogin && styles.activeTab]}
-              onPress={() => setIsLogin(false)}
-            >
-              <Text style={[styles.tabText, !isLogin && styles.activeTabText]}>Register</Text>
-            </TouchableOpacity>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            {appLogo ? (
+              <Image source={{ uri: appLogo }} style={styles.appLogoImage} />
+            ) : (
+              <Text style={styles.logo}>📊</Text>
+            )}
+            <Text style={[styles.title, { color: t.text }]}>Smarta Tech</Text>
+            <Text style={[styles.subtitle, { color: t.accent }]}>Tracker</Text>
           </View>
 
-          {!isLogin && (
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. Smarta Technologies"
-              placeholderTextColor="#94a3b8"
-              value={organizationName}
-              onChangeText={setOrganizationName}
-            />
-          )}
+          <View style={[styles.form, { backgroundColor: t.cardBg, borderColor: t.border }]}>
+            <View style={[styles.tabContainer, { backgroundColor: t.tabBg }]}>
+              <TouchableOpacity
+                style={[styles.tab, isLogin && [styles.activeTab, { backgroundColor: t.accent }]]}
+                onPress={() => setIsLogin(true)}
+              >
+                <Text style={[styles.tabText, { color: t.textSecondary }, isLogin && styles.activeTabText]}>Login</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, !isLogin && [styles.activeTab, { backgroundColor: t.accent }]]}
+                onPress={() => setIsLogin(false)}
+              >
+                <Text style={[styles.tabText, { color: t.textSecondary }, !isLogin && styles.activeTabText]}>Register</Text>
+              </TouchableOpacity>
+            </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. info@smartatech.com"
-            placeholderTextColor="#94a3b8"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="e.g. Min 6 characters"
-            placeholderTextColor="#94a3b8"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-
-          {!isLogin && (
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. +91 98765 43210"
-              placeholderTextColor="#94a3b8"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
-            />
-          )}
-
-          {!isLogin && (
-            <TextInput
-              style={styles.input}
-              placeholder="e.g. 2/367, Society Colony, 1st Main 5th Cross, near Ramalayam"
-              placeholderTextColor="#94a3b8"
-              value={address}
-              onChangeText={setAddress}
-            />
-          )}
-
-          <TouchableOpacity
-            style={styles.submitBtn}
-            onPress={handleSubmit}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.submitText}>{isLogin ? 'Login' : 'Register'}</Text>
+            {!isLogin && (
+              <>
+                <Text style={[styles.label, { color: t.textSecondary }]}>Organization Logo</Text>
+                <TouchableOpacity
+                  style={[styles.logoPicker, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}
+                  onPress={pickLogo}
+                >
+                  {logo ? (
+                    <Image source={{ uri: logo.uri }} style={styles.logoPreview} />
+                  ) : (
+                    <View style={styles.logoPlaceholder}>
+                      <Text style={styles.logoPlaceholderIcon}>📷</Text>
+                      <Text style={[styles.logoPlaceholderText, { color: t.placeholder }]}>
+                        Tap to add logo
+                      </Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </>
             )}
-          </TouchableOpacity>
-        </View>
+
+            {!isLogin && (
+              <>
+                <Text style={[styles.label, { color: t.textSecondary }]}>Organization Name</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+                  placeholder="e.g. Smarta Technologies"
+                  placeholderTextColor={t.placeholder}
+                  value={organizationName}
+                  onChangeText={setOrganizationName}
+                />
+              </>
+            )}
+
+            <Text style={[styles.label, { color: t.textSecondary }]}>Email</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+              placeholder="e.g. info@smartatech.com"
+              placeholderTextColor={t.placeholder}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <Text style={[styles.label, { color: t.textSecondary }]}>Password</Text>
+            <TextInput
+              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+              placeholder="e.g. Min 6 characters"
+              placeholderTextColor={t.placeholder}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+            />
+
+            {!isLogin && (
+              <>
+                <Text style={[styles.label, { color: t.textSecondary }]}>Phone</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+                  placeholder="e.g. +91 98765 43210"
+                  placeholderTextColor={t.placeholder}
+                  value={phone}
+                  onChangeText={setPhone}
+                  keyboardType="phone-pad"
+                />
+              </>
+            )}
+
+            {!isLogin && (
+              <>
+                <Text style={[styles.label, { color: t.textSecondary }]}>Address</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+                  placeholder="e.g. 2/367, Society Colony..."
+                  placeholderTextColor={t.placeholder}
+                  value={address}
+                  onChangeText={setAddress}
+                />
+              </>
+            )}
+
+            <TouchableOpacity
+              style={[styles.submitBtn, { backgroundColor: t.accent }]}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.submitText}>{isLogin ? 'Login' : 'Register'}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0f0f1a',
-  },
-  keyboardView: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 40,
-  },
-  logo: {
-    fontSize: 60,
-    marginBottom: 10,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#ffffff',
-  },
-  subtitle: {
-    fontSize: 24,
-    color: '#22c55e',
-    fontWeight: '600',
-  },
-  form: {
-    backgroundColor: '#1a1a2e',
+  container: { flex: 1 },
+  keyboardView: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
+  header: { alignItems: 'center', marginBottom: 40 },
+  logo: { fontSize: 60, marginBottom: 10 },
+  appLogoImage: { width: 80, height: 80, borderRadius: 20, marginBottom: 10 },
+  title: { fontSize: 28, fontWeight: 'bold' },
+  subtitle: { fontSize: 24, fontWeight: '600' },
+  form: { borderRadius: 20, padding: 25, borderWidth: 1 },
+  tabContainer: { flexDirection: 'row', marginBottom: 25, borderRadius: 12, padding: 4 },
+  tab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 10 },
+  activeTab: {},
+  tabText: { fontSize: 16, fontWeight: '600' },
+  activeTabText: { color: '#fff' },
+  label: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  logoPicker: {
+    width: 100,
+    height: 100,
     borderRadius: 20,
-    padding: 25,
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    marginBottom: 25,
-    backgroundColor: '#0f0f1a',
-    borderRadius: 12,
-    padding: 4,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    alignSelf: 'center',
+    marginBottom: 18,
+    overflow: 'hidden',
+    justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 10,
   },
-  activeTab: {
-    backgroundColor: '#22c55e',
-  },
-  tabText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#64748b',
-  },
-  activeTabText: {
-    color: '#fff',
-  },
-  input: {
-    backgroundColor: '#0f0f1a',
-    borderWidth: 1,
-    borderColor: '#2a2a3e',
-    borderRadius: 12,
-    padding: 15,
-    fontSize: 16,
-    marginBottom: 15,
-    color: '#e2e8f0',
-  },
-  submitBtn: {
-    backgroundColor: '#22c55e',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  submitText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-  },
+  logoPreview: { width: 100, height: 100, borderRadius: 20 },
+  logoPlaceholder: { alignItems: 'center' },
+  logoPlaceholderIcon: { fontSize: 28, marginBottom: 4 },
+  logoPlaceholderText: { fontSize: 11, textAlign: 'center' },
+  input: { borderWidth: 1, borderRadius: 12, padding: 15, fontSize: 16, marginBottom: 15 },
+  submitBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  submitText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 });
