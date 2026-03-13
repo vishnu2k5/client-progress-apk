@@ -10,7 +10,6 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -79,27 +78,6 @@ export default function LoginScreen({ navigation }) {
         if (orgLogo) {
           await AsyncStorage.setItem('orgLogo', orgLogo);
         }
-        setLoading(false);
-        if (orgLogo) {
-          const confirmed = await new Promise((resolve) => {
-            if (Platform.OS === 'web') {
-              resolve(window.confirm('Set your organization logo as the app logo?'));
-            } else {
-              Alert.alert(
-                'App Logo',
-                'Would you like to set your organization logo as the app logo?',
-                [
-                  { text: 'Skip', style: 'cancel', onPress: () => resolve(false) },
-                  { text: 'Yes', onPress: () => resolve(true) },
-                ],
-                { cancelable: false }
-              );
-            }
-          });
-          if (confirmed) {
-            await AsyncStorage.setItem('appLogo', orgLogo);
-          }
-        }
         navigation.replace('Home');
       } else {
         if (!organizationName.trim()) { showToast('Organization name is required', 'error'); setLoading(false); return; }
@@ -115,28 +93,6 @@ export default function LoginScreen({ navigation }) {
           },
           logo
         );
-        const regLogo = res.data.organization?.logo;
-        if (regLogo) {
-          setLoading(false);
-          const confirmed = await new Promise((resolve) => {
-            if (Platform.OS === 'web') {
-              resolve(window.confirm('Set your organization logo as the app logo?'));
-            } else {
-              Alert.alert(
-                'App Logo',
-                'Would you like to set your organization logo as the app logo?',
-                [
-                  { text: 'Skip', style: 'cancel', onPress: () => resolve(false) },
-                  { text: 'Yes', onPress: () => resolve(true) },
-                ],
-                { cancelable: false }
-              );
-            }
-          });
-          if (confirmed) {
-            await AsyncStorage.setItem('appLogo', regLogo);
-          }
-        }
         showToast('Registration successful! Please login.');
         setIsLogin(true);
         setPassword('');
