@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { getClients, addClient, getAllProgress, setAuthFailureHandler, getMe } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
@@ -45,12 +46,13 @@ export default function HomeScreen({ navigation }) {
 
   const loadData = async () => {
     try {
-      const [name, logo] = await Promise.all([
+      const [name, logo, appLogo] = await Promise.all([
         AsyncStorage.getItem('orgName'),
         AsyncStorage.getItem('orgLogo'),
+        AsyncStorage.getItem('appLogo'),
       ]);
       setOrgName(name || 'Organization');
-      setOrgLogo(logo || null);
+      setOrgLogo(logo || appLogo || null);
 
       // Refresh org info from server (logo may have changed on profile)
       try {
@@ -64,8 +66,14 @@ export default function HomeScreen({ navigation }) {
           setOrgLogo(org.logo);
           await AsyncStorage.setItem('orgLogo', org.logo);
         } else {
-          setOrgLogo(null);
-          await AsyncStorage.removeItem('orgLogo');
+          // Fall back to appLogo if user explicitly set one via the login prompt
+          const savedAppLogo = await AsyncStorage.getItem('appLogo');
+          if (savedAppLogo) {
+            setOrgLogo(savedAppLogo);
+          } else {
+            setOrgLogo(null);
+            await AsyncStorage.removeItem('orgLogo');
+          }
         }
       } catch {}
 
@@ -176,7 +184,7 @@ export default function HomeScreen({ navigation }) {
             <Text style={styles.profileText}>👤</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: t.dangerBg }]} onPress={handleLogout}>
-            <Text style={[styles.logoutText, { color: t.danger }]}>⏻</Text>
+            <MaterialIcons name="logout" size={22} color={t.danger} />
           </TouchableOpacity>
         </View>
       </View>
@@ -252,7 +260,6 @@ const styles = StyleSheet.create({
   orgLogoImage: { width: 42, height: 42, borderRadius: 12 },
   orgName: { fontSize: 20, fontWeight: 'bold' },
   logoutBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  logoutText: { fontSize: 20 },
   headerActions: { flexDirection: 'row', gap: 10 },
   profileBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   profileText: { fontSize: 20 },

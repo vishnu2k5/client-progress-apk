@@ -30,16 +30,11 @@ export default function LoginScreen({ navigation }) {
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [logo, setLogo] = useState(null);
-  const [appLogo, setAppLogo] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const checkAuth = useCallback(async () => {
     try {
-      const [token, savedAppLogo] = await Promise.all([
-        AsyncStorage.getItem('token'),
-        AsyncStorage.getItem('appLogo'),
-      ]);
-      if (savedAppLogo) setAppLogo(savedAppLogo);
+      const token = await AsyncStorage.getItem('token');
       if (token) navigation.replace('Home');
     } catch {}
   }, [navigation]);
@@ -103,7 +98,6 @@ export default function LoginScreen({ navigation }) {
           });
           if (confirmed) {
             await AsyncStorage.setItem('appLogo', orgLogo);
-            setAppLogo(orgLogo);
           }
         }
         navigation.replace('Home');
@@ -141,7 +135,6 @@ export default function LoginScreen({ navigation }) {
           });
           if (confirmed) {
             await AsyncStorage.setItem('appLogo', regLogo);
-            setAppLogo(regLogo);
           }
         }
         showToast('Registration successful! Please login.');
@@ -170,11 +163,7 @@ export default function LoginScreen({ navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            {appLogo ? (
-              <Image source={{ uri: appLogo }} style={styles.appLogoImage} />
-            ) : (
-              <Text style={styles.logo}>📊</Text>
-            )}
+            <Text style={styles.logo}>📊</Text>
             <Text style={[styles.title, { color: t.text }]}>Smarta Tech</Text>
             <Text style={[styles.subtitle, { color: t.accent }]}>Tracker</Text>
           </View>
@@ -301,7 +290,6 @@ const styles = StyleSheet.create({
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 20 },
   header: { alignItems: 'center', marginBottom: 40 },
   logo: { fontSize: 60, marginBottom: 10 },
-  appLogoImage: { width: 80, height: 80, borderRadius: 20, marginBottom: 10 },
   title: { fontSize: 28, fontWeight: 'bold' },
   subtitle: { fontSize: 24, fontWeight: '600' },
   form: { borderRadius: 20, padding: 25, borderWidth: 1 },
