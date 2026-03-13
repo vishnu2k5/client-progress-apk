@@ -17,6 +17,7 @@
     "expo": "~55.0.5",
     "expo-image-picker": "~55.0.12",
     "expo-status-bar": "~55.0.4",
+    "expo-updates": "~55.0.13",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "react-native": "0.83.2",
