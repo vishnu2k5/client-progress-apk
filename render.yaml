@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: smarta-tech-tracker-web
+    runtime: static
+    rootDir: web
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    pullRequestPreviewsEnabled: true

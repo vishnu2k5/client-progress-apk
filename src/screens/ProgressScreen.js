@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getProgress, updateProgress, deleteClient, updateClient } from '../services/api';
 import { showToast } from '../components/Toast';
@@ -39,6 +40,7 @@ export default function ProgressScreen({ route, navigation }) {
   const [clientNameInput, setClientNameInput] = useState(initialName);
   const [currentName, setCurrentName] = useState(initialName);
   const [savingName, setSavingName] = useState(false);
+  const [openDateStage, setOpenDateStage] = useState(null);
 
   useEffect(() => {
     loadProgress();
@@ -63,7 +65,31 @@ export default function ProgressScreen({ route, navigation }) {
     setLoading(false);
   };
 
-  const getTodayDate = () => new Date().toISOString().split('T')[0];
+  const getTodayDate = () => formatDate(new Date());
+
+  const formatDate = (date) => {
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, '0');
+    const day = `${date.getDate()}`.padStart(2, '0');
+    return `${year}/${month}/${day}`;
+  };
+
+  const parseDate = (value) => {
+    if (!value) return new Date();
+    const normalized = value.replace(/\//g, '-');
+    const parsed = new Date(`${normalized}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+  };
+
+  const toWebInputDate = (value) => {
+    if (!value) return '';
+    return value.replace(/\//g, '-');
+  };
+
+  const fromWebInputDate = (value) => {
+    if (!value) return '';
+    return value.replace(/-/g, '/');
+  };
 
   const handleSave = async (stageKey, isOrder) => {
     setSaving(stageKey);
@@ -141,6 +167,12 @@ export default function ProgressScreen({ route, navigation }) {
   };
 
   const updateInput = (key, value) => setInputs((prev) => ({ ...prev, [key]: value }));
+
+  const handleDateChange = (stageKey, event, selectedDate) => {
+    if (Platform.OS === 'android') setOpenDateStage(null);
+    if (event?.type === 'dismissed' || !selectedDate) return;
+    updateInput(`${stageKey}-date`, formatDate(selectedDate));
+  };
 
   const hasValue = (stageKey, isOrder) => {
     const d = progress[stageKey];
@@ -288,16 +320,76 @@ export default function ProgressScreen({ route, navigation }) {
                           )}
                         </TouchableOpacity>
                       </View>
-                      <TextInput
-                        style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
-                        placeholder={stage.isOrder ? 'Order Value' : 'YYYY-MM-DD'}
-                        placeholderTextColor={t.placeholder}
-                        value={stage.isOrder ? inputs[`${stage.key}-value`] : inputs[`${stage.key}-date`]}
-                        onChangeText={(v) =>
-                          updateInput(stage.isOrder ? `${stage.key}-value` : `${stage.key}-date`, v)
-                        }
-                        keyboardType={stage.isOrder ? 'numeric' : 'default'}
-                      />
+                      {stage.isOrder ? (
+                        <TextInput
+                          style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.inputBorder, color: t.text }]}
+                          placeholder="Order Value"
+                          placeholderTextColor={t.placeholder}
+                          value={inputs[`${stage.key}-value`]}
+                          onChangeText={(v) => updateInput(`${stage.key}-value`, v)}
+                          keyboardType="numeric"
+                        />
+                      ) : (
+                        <>
+                          {Platform.OS === 'web' ? (
+                            <View
+                              style={[
+                                styles.dateInput,
+                                styles.dateInputWebWrap,
+                                { backgroundColor: t.inputBg, borderColor: t.inputBorder },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.dateInputText,
+                                  { color: inputs[`${stage.key}-date`] ? t.text : t.placeholder },
+                                ]}
+                              >
+                                {inputs[`${stage.key}-date`] || 'YYYY/MM/DD'}
+                              </Text>
+                              <Text style={[styles.dateIcon, { color: t.subText }]}>📅</Text>
+                              <input
+                                type="date"
+                                value={toWebInputDate(inputs[`${stage.key}-date`])}
+                                onChange={(e) =>
+                                  updateInput(`${stage.key}-date`, fromWebInputDate(e.target.value))
+                                }
+                                style={styles.webNativeDateInput}
+                                aria-label={`${stage.label} date`}
+                              />
+                            </View>
+                          ) : (
+                            <>
+                              <TouchableOpacity
+                                activeOpacity={0.8}
+                                style={[styles.dateInput, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}
+                                onPress={() => setOpenDateStage(stage.key)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.dateInputText,
+                                    { color: inputs[`${stage.key}-date`] ? t.text : t.placeholder },
+                                  ]}
+                                >
+                                  {inputs[`${stage.key}-date`] || 'YYYY/MM/DD'}
+                                </Text>
+                                <Text style={[styles.dateIcon, { color: t.subText }]}>📅</Text>
+                              </TouchableOpacity>
+
+                              {openDateStage === stage.key && (
+                                <DateTimePicker
+                                  value={parseDate(inputs[`${stage.key}-date`])}
+                                  mode="date"
+                                  display={Platform.OS === 'ios' ? 'inline' : 'default'}
+                                  onChange={(event, selectedDate) =>
+                                    handleDateChange(stage.key, event, selectedDate)
+                                  }
+                                />
+                              )}
+                            </>
+                          )}
+                        </>
+                      )}
                     </View>
                   ) : (
                     <View style={[styles.pendingBox, { backgroundColor: t.inputBg, borderColor: t.inputBorder }]}>
@@ -387,6 +479,28 @@ const styles = StyleSheet.create({
   pendingText: { fontSize: 15, fontWeight: '500' },
   inputRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   input: { flex: 1, borderWidth: 1.5, borderRadius: 12, padding: 12, fontSize: 15 },
+  dateInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateInputWebWrap: {
+    position: 'relative',
+  },
+  dateInputText: { fontSize: 15, flex: 1 },
+  dateIcon: { fontSize: 16, marginLeft: 8 },
+  webNativeDateInput: {
+    position: 'absolute',
+    inset: 0,
+    width: '100%',
+    height: '100%',
+    opacity: 0,
+    cursor: 'pointer',
+  },
   saveBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   saveBtnText: { color: '#fff', fontSize: 16 },
   deleteBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 12, borderWidth: 1 },
