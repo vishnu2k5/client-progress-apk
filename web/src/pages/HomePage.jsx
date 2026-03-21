@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { addClient, getAllProgress, getClients, getMe, setAuthFailureHandler } from '../lib/api.js';
 import { clearAuth, getOrgLogo, getOrgName, setOrgLogo, setOrgName } from '../lib/storage.js';
 import { useToast } from '../components/Toast.jsx';
+import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../lib/notificationService.js';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -24,11 +25,21 @@ export default function HomePage() {
     try {
       const [clientsRes, progressRes] = await Promise.all([getClients(), getAllProgress()]);
       const deliveredMap = {};
+      const updateInfoMap = {};
       progressRes.data.forEach((entry) => {
         const id = entry.clientId?._id || entry.clientId;
-        if (id) deliveredMap[id] = !!entry.delivered;
+        if (id) {
+          deliveredMap[id] = !!entry.delivered;
+          updateInfoMap[id] = getLastUpdateInfo(entry);
+        }
       });
-      setClients(clientsRes.data.map((entry) => ({ ...entry, delivered: deliveredMap[entry._id] || false })));
+      setClients(
+        clientsRes.data.map((entry) => ({
+          ...entry,
+          delivered: deliveredMap[entry._id] || false,
+          updateInfo: updateInfoMap[entry._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
+        }))
+      );
     } catch (error) {
       showToast(error.response?.data?.message || 'Error loading clients', 'error');
     } finally {
@@ -127,21 +138,38 @@ export default function HomePage() {
         {filteredClients.length === 0 ? (
           <div className="card empty">No clients found</div>
         ) : (
-          filteredClients.map((item) => (
-            <Link to={`/progress/${item._id}`} state={{ clientName: item.clientName }} key={item._id} className="card client-item">
-              <div className="client-left">
-                <div className="client-icon">🏢</div>
-                <div>
-                  <div className="client-name">{item.clientName}</div>
-                  <div className="muted">Added {new Date(item.createdAt).toLocaleDateString()}</div>
+          filteredClients.map((item) => {
+            const showReminder = !item.delivered && item.updateInfo.isOverdue;
+            const notifStyle = getNotificationStyle(showReminder);
+            return (
+              <Link
+                to={`/progress/${item._id}`}
+                state={{ clientName: item.clientName }}
+                key={item._id}
+                className={`card client-item ${showReminder ? 'overdue' : ''}`}
+                style={showReminder ? { borderColor: notifStyle.color, borderWidth: '2px' } : {}}
+              >
+                <div className="client-left">
+                  <div className="client-icon">🏢</div>
+                  <div>
+                    <div className="client-name">{item.clientName}</div>
+                    <div className="muted" style={showReminder ? { color: notifStyle.color } : {}}>
+                      {formatDaysAgo(item.updateInfo.daysAgo)}
+                    </div>
+                    {showReminder && (
+                      <div className="notification-badge" style={{ backgroundColor: notifStyle.bgColor, color: notifStyle.color }}>
+                        ⚠ {notifStyle.text}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <div className="client-right">
-                {item.delivered ? <span className="badge">✓</span> : null}
-                <span className="arrow">›</span>
-              </div>
-            </Link>
-          ))
+                <div className="client-right">
+                  {item.delivered ? <span className="badge">✓</span> : null}
+                  <span className="arrow">›</span>
+                </div>
+              </Link>
+            );
+          })
         )}
       </div>
     </div>

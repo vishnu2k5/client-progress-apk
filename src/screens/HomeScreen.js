@@ -19,6 +19,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { getClients, addClient, getAllProgress, setAuthFailureHandler, getMe } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
+import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../services/notificationService';
 
 export default function HomeScreen({ navigation }) {
   const t = useTheme();
@@ -87,11 +88,19 @@ export default function HomeScreen({ navigation }) {
     try {
       const [clientsRes, progressRes] = await Promise.all([getClients(), getAllProgress()]);
       const deliveredMap = {};
+      const updateInfoMap = {};
       progressRes.data.forEach((p) => {
         const cId = p.clientId?._id || p.clientId;
-        if (cId) deliveredMap[cId] = !!p.delivered;
+        if (cId) {
+          deliveredMap[cId] = !!p.delivered;
+          updateInfoMap[cId] = getLastUpdateInfo(p);
+        }
       });
-      const merged = clientsRes.data.map((c) => ({ ...c, delivered: deliveredMap[c._id] || false }));
+      const merged = clientsRes.data.map((c) => ({
+        ...c,
+        delivered: deliveredMap[c._id] || false,
+        updateInfo: updateInfoMap[c._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
+      }));
       setClients(merged);
     } catch (error) {
       if (error.response?.status === 401) navigation.replace('Login');
@@ -133,28 +142,43 @@ export default function HomeScreen({ navigation }) {
   }, [navigation]);
 
   const renderClient = useCallback(
-    ({ item }) => (
-      <TouchableOpacity
-        style={[styles.clientCard, { backgroundColor: t.cardBg, borderColor: t.border }]}
-        onPress={() => navigation.navigate('Progress', { clientId: item._id, clientName: item.clientName })}
-      >
-        <View style={[styles.clientIcon, { backgroundColor: t.accentLight }]}>
-          <Text style={styles.clientIconText}>🏢</Text>
-        </View>
-        <View style={styles.clientInfo}>
-          <Text style={[styles.clientName, { color: t.text }]}>{item.clientName}</Text>
-          <Text style={[styles.clientDate, { color: t.subText }]}>
-            Added {new Date(item.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-        {item.delivered && (
-          <View style={[styles.deliveredBadge, { backgroundColor: t.accentLight }]}>
-            <Text style={[styles.deliveredTick, { color: t.accent }]}>✓</Text>
+    ({ item }) => {
+      const notifStyle = getNotificationStyle(item.updateInfo.isOverdue);
+      return (
+        <TouchableOpacity
+          style={[
+            styles.clientCard,
+            {
+              backgroundColor: t.cardBg,
+              borderColor: item.updateInfo.isOverdue ? notifStyle.color : t.border,
+              borderWidth: item.updateInfo.isOverdue ? 2 : 1,
+            },
+          ]}
+          onPress={() => navigation.navigate('Progress', { clientId: item._id, clientName: item.clientName })}
+        >
+          <View style={[styles.clientIcon, { backgroundColor: t.accentLight }]}>
+            <Text style={styles.clientIconText}>🏢</Text>
           </View>
-        )}
-        <Text style={[styles.arrow, { color: t.subText }]}>›</Text>
-      </TouchableOpacity>
-    ),
+          <View style={styles.clientInfo}>
+            <Text style={[styles.clientName, { color: t.text }]}>{item.clientName}</Text>
+            <Text style={[styles.clientDate, { color: notifStyle.color }]}>
+              {formatDaysAgo(item.updateInfo.daysAgo)}
+            </Text>
+            {item.updateInfo.isOverdue && (
+              <View style={[styles.notificationBadge, { backgroundColor: notifStyle.bgColor }]}>
+                <Text style={[styles.notificationText, { color: notifStyle.color }]}>⚠ {notifStyle.text}</Text>
+              </View>
+            )}
+          </View>
+          {item.delivered && (
+            <View style={[styles.deliveredBadge, { backgroundColor: t.accentLight }]}>
+              <Text style={[styles.deliveredTick, { color: t.accent }]}>✓</Text>
+            </View>
+          )}
+          <Text style={[styles.arrow, { color: t.subText }]}>›</Text>
+        </TouchableOpacity>
+      );
+    },
     [navigation, t]
   );
 
@@ -277,6 +301,8 @@ const styles = StyleSheet.create({
   clientInfo: { flex: 1, marginLeft: 15 },
   clientName: { fontSize: 17, fontWeight: '600' },
   clientDate: { fontSize: 13, marginTop: 3 },
+  notificationBadge: { marginTop: 6, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, alignSelf: 'flex-start' },
+  notificationText: { fontSize: 11, fontWeight: '600' },
   deliveredBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
   deliveredTick: { fontSize: 16, fontWeight: 'bold' },
   arrow: { fontSize: 24, fontWeight: '300' },
