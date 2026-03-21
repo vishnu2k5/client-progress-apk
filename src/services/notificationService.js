@@ -8,16 +8,39 @@ export const getLastUpdateInfo = (progressData) => {
     return { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true };
   }
 
-  // Get all stage update timestamps, excluding 'delivered' and 'clientId'
+  const toTimestamp = (value) => {
+    if (!value) return null;
+    const date = new Date(value);
+    const ts = date.getTime();
+    return Number.isNaN(ts) ? null : ts;
+  };
+
+  const fromStageDate = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    // Supports YYYY/MM/DD and YYYY-MM-DD formats.
+    const normalized = value.replace(/\//g, '-');
+    return toTimestamp(normalized);
+  };
+
+  // Get all possible update timestamps from stage fields and document fields.
   const timestamps = [];
   const stages = ['Lead', 'firstContact', 'followUp', 'RFQ', 'quote', 'quoteFollowUp', 'order'];
 
   stages.forEach((stage) => {
     const stageData = progressData[stage];
-    if (stageData && stageData.updatedAt) {
-      timestamps.push(new Date(stageData.updatedAt).getTime());
-    }
+    if (!stageData) return;
+
+    const stageUpdatedAtTs = toTimestamp(stageData.updatedAt);
+    const stageDateTs = fromStageDate(stageData.date);
+
+    if (stageUpdatedAtTs) timestamps.push(stageUpdatedAtTs);
+    if (stageDateTs) timestamps.push(stageDateTs);
   });
+
+  const docUpdatedAtTs = toTimestamp(progressData.updatedAt);
+  const docCreatedAtTs = toTimestamp(progressData.createdAt);
+  if (docUpdatedAtTs) timestamps.push(docUpdatedAtTs);
+  if (docCreatedAtTs) timestamps.push(docCreatedAtTs);
 
   if (timestamps.length === 0) {
     return { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true };
@@ -27,7 +50,7 @@ export const getLastUpdateInfo = (progressData) => {
   const lastUpdateDate = new Date(lastTimestamp);
   const now = new Date();
   const diffMs = now.getTime() - lastUpdateDate.getTime();
-  const daysAgo = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const daysAgo = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
 
   return {
     lastUpdateDate,

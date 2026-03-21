@@ -17,6 +17,7 @@
     "axios": "^1.13.6",
     "expo": "~55.0.5",
     "expo-image-picker": "~55.0.12",
+    "expo-notifications": "~55.0.13",
     "expo-status-bar": "~55.0.4",
     "expo-updates": "~55.0.13",
     "react": "19.2.0",

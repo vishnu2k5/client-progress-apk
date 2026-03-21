@@ -20,6 +20,7 @@ import { getClients, addClient, getAllProgress, setAuthFailureHandler, getMe } f
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../services/notificationService';
+import { notifyStaleProgress } from '../services/localNotifications';
 
 export default function HomeScreen({ navigation }) {
   const t = useTheme();
@@ -102,6 +103,11 @@ export default function HomeScreen({ navigation }) {
         updateInfo: updateInfoMap[c._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
       }));
       setClients(merged);
+
+      const staleCount = merged.filter((client) => !client.delivered && client.updateInfo.isOverdue).length;
+      if (staleCount > 0) {
+        await notifyStaleProgress(staleCount);
+      }
     } catch (error) {
       if (error.response?.status === 401) navigation.replace('Login');
       else showToast('Error loading clients', 'error');
@@ -143,15 +149,16 @@ export default function HomeScreen({ navigation }) {
 
   const renderClient = useCallback(
     ({ item }) => {
-      const notifStyle = getNotificationStyle(item.updateInfo.isOverdue);
+      const showReminder = !item.delivered && item.updateInfo.isOverdue;
+      const notifStyle = getNotificationStyle(showReminder);
       return (
         <TouchableOpacity
           style={[
             styles.clientCard,
             {
               backgroundColor: t.cardBg,
-              borderColor: item.updateInfo.isOverdue ? notifStyle.color : t.border,
-              borderWidth: item.updateInfo.isOverdue ? 2 : 1,
+              borderColor: showReminder ? notifStyle.color : t.border,
+              borderWidth: showReminder ? 2 : 1,
             },
           ]}
           onPress={() => navigation.navigate('Progress', { clientId: item._id, clientName: item.clientName })}
@@ -161,10 +168,10 @@ export default function HomeScreen({ navigation }) {
           </View>
           <View style={styles.clientInfo}>
             <Text style={[styles.clientName, { color: t.text }]}>{item.clientName}</Text>
-            <Text style={[styles.clientDate, { color: notifStyle.color }]}>
+            <Text style={[styles.clientDate, showReminder ? { color: notifStyle.color } : { color: t.subText }]}>
               {formatDaysAgo(item.updateInfo.daysAgo)}
             </Text>
-            {item.updateInfo.isOverdue && (
+            {showReminder && (
               <View style={[styles.notificationBadge, { backgroundColor: notifStyle.bgColor }]}>
                 <Text style={[styles.notificationText, { color: notifStyle.color }]}>⚠ {notifStyle.text}</Text>
               </View>

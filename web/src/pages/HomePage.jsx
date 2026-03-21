@@ -33,13 +33,14 @@ export default function HomePage() {
           updateInfoMap[id] = getLastUpdateInfo(entry);
         }
       });
-      setClients(
-        clientsRes.data.map((entry) => ({
-          ...entry,
-          delivered: deliveredMap[entry._id] || false,
-          updateInfo: updateInfoMap[entry._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
-        }))
-      );
+      const merged = clientsRes.data.map((entry) => ({
+        ...entry,
+        delivered: deliveredMap[entry._id] || false,
+        updateInfo: updateInfoMap[entry._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
+      }));
+      setClients(merged);
+
+      const staleCount = merged.filter((client) => !client.delivered && client.updateInfo.isOverdue).length;
     } catch (error) {
       showToast(error.response?.data?.message || 'Error loading clients', 'error');
     } finally {
