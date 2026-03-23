@@ -30,7 +30,6 @@ import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../services/notificationService';
 import {
-  notifyStaleProgress,
   getRegistrationTokenForBackend,
   getStoredExpoPushToken,
   clearStoredExpoPushToken,
@@ -139,11 +138,6 @@ export default function HomeScreen({ navigation }) {
         updateInfo: updateInfoMap[c._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
       }));
       setClients(merged);
-
-      const staleCount = merged.filter((client) => !client.delivered && client.updateInfo.isOverdue).length;
-      if (staleCount > 0) {
-        await notifyStaleProgress(staleCount);
-      }
     } catch (error) {
       if (error.response?.status === 401) navigation.replace('Login');
       else showToast('Error loading clients', 'error');

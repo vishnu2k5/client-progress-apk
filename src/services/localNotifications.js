@@ -3,9 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 
-const LAST_STALE_NOTIFICATION_KEY = 'lastStaleNotificationAt';
 const EXPO_PUSH_TOKEN_KEY = 'expoPushToken';
-const STALE_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
 const DEBUG_FALLBACK_EXPO_TOKEN = Constants?.expoConfig?.extra?.debugFallbackExpoToken || null;
 
 const ensureAndroidChannel = async () => {
@@ -72,12 +70,19 @@ export const getExpoPushToken = async () => {
 };
 
 export const getRegistrationTokenForBackend = async () => {
+  const storedToken = await getStoredExpoPushToken();
+  if (storedToken) return storedToken;
+
   const expoToken = await getExpoPushToken();
   if (expoToken) return expoToken;
 
-  if (DEBUG_FALLBACK_EXPO_TOKEN) {
+  const debugToken = typeof DEBUG_FALLBACK_EXPO_TOKEN === 'string'
+    ? DEBUG_FALLBACK_EXPO_TOKEN.trim()
+    : '';
+
+  if (debugToken) {
     console.log('Using debug fallback push token for backend registration');
-    return DEBUG_FALLBACK_EXPO_TOKEN;
+    return debugToken;
   }
 
   return null;
@@ -85,36 +90,4 @@ export const getRegistrationTokenForBackend = async () => {
 
 export const clearStoredExpoPushToken = async () => {
   await AsyncStorage.removeItem(EXPO_PUSH_TOKEN_KEY);
-};
-
-const canSendStaleNotification = async () => {
-  const last = await AsyncStorage.getItem(LAST_STALE_NOTIFICATION_KEY);
-  if (!last) return true;
-
-  const lastTs = Number(last);
-  if (Number.isNaN(lastTs)) return true;
-
-  return Date.now() - lastTs > STALE_NOTIFICATION_COOLDOWN_MS;
-};
-
-export const notifyStaleProgress = async (staleCount) => {
-  if (!staleCount || staleCount < 1) return;
-
-  const allowed = await canSendStaleNotification();
-  if (!allowed) return;
-
-  const hasPermission = await ensureNotificationPermission();
-  if (!hasPermission) return;
-
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Progress reminder',
-      body: `${staleCount} client${staleCount > 1 ? 's' : ''} need progress update`,
-      sound: true,
-      priority: Notifications.AndroidNotificationPriority.HIGH,
-    },
-    trigger: null,
-  });
-
-  await AsyncStorage.setItem(LAST_STALE_NOTIFICATION_KEY, String(Date.now()));
 };
