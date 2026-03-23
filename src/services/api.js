@@ -39,7 +39,6 @@ api.interceptors.request.use(
       data: config.data,
     };
     console.log(`[API_REQUEST] ${config.method?.toUpperCase()} ${config.url}`, reqLog);
-    showToast(`📤 ${config.method?.toUpperCase()} ${config.url.split('/').pop()}`, 'info');
     return config;
   },
   (error) => {
@@ -62,7 +61,6 @@ api.interceptors.response.use(
         : response.data,
     };
     console.log(`[API_SUCCESS] ${response.config.method?.toUpperCase()} ${response.config.url}`, resLog);
-    showToast(`✅ ${response.status} ${response.config.url.split('/').pop()}`, 'success');
     return response;
   },
   async (error) => {
@@ -186,7 +184,7 @@ export const registerNotificationDevice = async (platform, expoPushToken, authTo
       deviceId: result.data?.data?._id,
       message: result.data?.message,
     });
-    showToast(`✅ Device Registered: ${result.data?.message}`, 'success');
+    showToast('Notification device registered successfully', 'success');
     return result;
   } catch (error) {
     console.error('[registerNotificationDevice] FAILED', {
