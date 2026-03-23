@@ -1,10 +1,10 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
 
-const EXPO_PUSH_TOKEN_KEY = 'expoPushToken';
-const DEBUG_FALLBACK_EXPO_TOKEN = Constants?.expoConfig?.extra?.debugFallbackExpoToken || null;
+const LOCAL_REMINDER_IDS_KEY = 'localReminderNotificationIdsV1';
+const DAILY_REMINDER_HOURS = [9, 11, 13, 15, 17];
+const STATIC_REMINDER_TYPE = 'static_progress_reminder';
 
 const ensureAndroidChannel = async () => {
   if (Platform.OS !== 'android') return;
@@ -34,73 +34,88 @@ export const ensureNotificationPermission = async () => {
   return true;
 };
 
-const getProjectId = () => {
-  const fromExpoConfig = Constants?.expoConfig?.extra?.eas?.projectId;
-  const fromEasConfig = Constants?.easConfig?.projectId;
-  return fromExpoConfig || fromEasConfig || undefined;
-};
-
-export const getStoredExpoPushToken = async () => AsyncStorage.getItem(EXPO_PUSH_TOKEN_KEY);
-
-export const getExpoPushToken = async () => {
+const getStoredReminderIds = async () => {
   try {
-    console.log('[getExpoPushToken] Checking notification permission...');
-    const hasPermission = await ensureNotificationPermission();
-    if (!hasPermission) {
-      console.log('[getExpoPushToken] BLOCKED: notification permission not granted');
-      return null;
+    const raw = await AsyncStorage.getItem(LOCAL_REMINDER_IDS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const setStoredReminderIds = async (ids) => {
+  await AsyncStorage.setItem(LOCAL_REMINDER_IDS_KEY, JSON.stringify(ids));
+};
+
+const getCurrentScheduledIds = async () => {
+  try {
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    return new Set(scheduled.map((item) => item.identifier));
+  } catch {
+    return new Set();
+  }
+};
+
+export const clearStaticDailyReminders = async () => {
+  const ids = await getStoredReminderIds();
+  for (const id of ids) {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(id);
+    } catch {
     }
-    console.log('[getExpoPushToken] ✅ Permission granted, fetching token...');
+  }
+  await AsyncStorage.removeItem(LOCAL_REMINDER_IDS_KEY);
+};
 
-    const projectId = getProjectId();
-    console.log('[getExpoPushToken] ProjectId:', projectId);
-    
-    const tokenResponse = projectId
-      ? await Notifications.getExpoPushTokenAsync({ projectId })
-      : await Notifications.getExpoPushTokenAsync();
+export const scheduleStaticDailyReminders = async () => {
+  if (Platform.OS === 'web') {
+    return { ok: false, reason: 'web-not-supported' };
+  }
 
-    const expoPushToken = tokenResponse?.data || null;
-    console.log('[getExpoPushToken] Token response:', {
-      hasToken: !!expoPushToken,
-      tokenPreview: expoPushToken ? `${expoPushToken.slice(0, 20)}...` : 'null',
-    });
+  const hasPermission = await ensureNotificationPermission();
+  if (!hasPermission) {
+    return { ok: false, reason: 'permission-not-granted' };
+  }
 
-    if (expoPushToken) {
-      await AsyncStorage.setItem(EXPO_PUSH_TOKEN_KEY, expoPushToken);
-      console.log('[getExpoPushToken] ✅ Token stored in AsyncStorage');
-      return expoPushToken;
+  const existingIds = await getStoredReminderIds();
+  if (existingIds.length === DAILY_REMINDER_HOURS.length) {
+    const scheduledIdSet = await getCurrentScheduledIds();
+    const allPresent = existingIds.every((id) => scheduledIdSet.has(id));
+    if (allPresent) {
+      return { ok: true, scheduledCount: existingIds.length, skipped: true };
     }
+  }
 
-    console.log('[getExpoPushToken] NULL: no token returned from Expo');
-    return null;
+  if (existingIds.length) {
+    await clearStaticDailyReminders();
+  }
+
+  const scheduledIds = [];
+  try {
+    for (const hour of DAILY_REMINDER_HOURS) {
+      const id = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Progress reminder',
+          body: 'Please update your client progress today.',
+          sound: true,
+          data: { type: STATIC_REMINDER_TYPE, hour },
+        },
+        trigger: {
+          hour,
+          minute: 0,
+          repeats: true,
+          channelId: Platform.OS === 'android' ? 'progress-reminders' : undefined,
+        },
+      });
+      scheduledIds.push(id);
+    }
   } catch (error) {
-    console.error('[getExpoPushToken] ERROR:', {
-      message: error?.message,
-      code: error?.code,
-    });
-    return null;
-  }
-};
-
-export const getRegistrationTokenForBackend = async () => {
-  const storedToken = await getStoredExpoPushToken();
-  if (storedToken) return storedToken;
-
-  const expoToken = await getExpoPushToken();
-  if (expoToken) return expoToken;
-
-  const debugToken = typeof DEBUG_FALLBACK_EXPO_TOKEN === 'string'
-    ? DEBUG_FALLBACK_EXPO_TOKEN.trim()
-    : '';
-
-  if (debugToken) {
-    console.log('Using debug fallback push token for backend registration');
-    return debugToken;
+    await clearStaticDailyReminders();
+    return { ok: false, reason: 'schedule-failed', error: error?.message || 'unknown' };
   }
 
-  return null;
-};
-
-export const clearStoredExpoPushToken = async () => {
-  await AsyncStorage.removeItem(EXPO_PUSH_TOKEN_KEY);
+  await setStoredReminderIds(scheduledIds);
+  return { ok: true, scheduledCount: scheduledIds.length, skipped: false };
 };

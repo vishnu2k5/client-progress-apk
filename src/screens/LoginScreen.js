@@ -14,10 +14,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { login, register, registerNotificationDevice, getApiBaseUrl } from '../services/api';
+import { login, register } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
-import { getRegistrationTokenForBackend } from '../services/localNotifications';
+import { scheduleStaticDailyReminders } from '../services/localNotifications';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -81,54 +81,19 @@ export default function LoginScreen({ navigation }) {
         }
 
         try {
-          console.log('[LoginScreen] Starting notification device registration...');
-          const expoPushToken = await getRegistrationTokenForBackend();
-          console.log('[LoginScreen] Got push token:', {
-            hasToken: !!expoPushToken,
-            tokenPreview: expoPushToken ? `${expoPushToken.slice(0, 20)}...` : 'null',
-          });
-          
-          if (expoPushToken) {
-            console.log('[LoginScreen] Calling registerNotificationDevice with token...');
-            const regRes = await registerNotificationDevice(Platform.OS, expoPushToken, res.data.token);
-            console.log('[LoginScreen] Push device registered (SUCCESS):', {
-              apiUrl: getApiBaseUrl(),
-              platform: Platform.OS,
-              tokenPreview: `${expoPushToken.slice(0, 20)}...`,
-              response: regRes?.data?.message,
-            });
+          const localScheduleResult = await scheduleStaticDailyReminders();
+          if (localScheduleResult?.ok && localScheduleResult?.skipped) {
+            console.log('[LoginScreen] Static reminders already scheduled');
+          } else if (localScheduleResult?.ok) {
+            showToast(`Static reminders scheduled (${localScheduleResult.scheduledCount}/day)`, 'success');
+            console.log('[LoginScreen] Static reminders scheduled', localScheduleResult);
           } else {
-            console.log('[LoginScreen] SKIPPED: no expo push token obtained');
+            console.log('[LoginScreen] Static reminder scheduling skipped', localScheduleResult);
           }
-        } catch (pushError) {
-          console.log('[LoginScreen] FAILED on first attempt:', {
-            message: pushError?.message,
-            apiError: pushError?.response?.data?.message,
+        } catch (localScheduleError) {
+          console.log('[LoginScreen] Static reminder scheduling failed', {
+            message: localScheduleError?.message || localScheduleError,
           });
-          // Retry once in case the app comes online a moment later.
-          try {
-            console.log('[LoginScreen] Retrying notification device registration...');
-            const retryToken = await getRegistrationTokenForBackend();
-            console.log('[LoginScreen] Got retry token:', {
-              hasToken: !!retryToken,
-              tokenPreview: retryToken ? `${retryToken.slice(0, 20)}...` : 'null',
-            });
-            
-            if (retryToken) {
-              const regRes = await registerNotificationDevice(Platform.OS, retryToken, res.data.token);
-              console.log('[LoginScreen] Push device registered on RETRY (SUCCESS):', {
-                apiUrl: getApiBaseUrl(),
-                platform: Platform.OS,
-                tokenPreview: `${retryToken.slice(0, 20)}...`,
-                response: regRes?.data?.message,
-              });
-            }
-          } catch (retryError) {
-            console.log('[LoginScreen] FAILED on retry:', {
-              message: retryError?.message,
-              apiError: retryError?.response?.data?.message,
-            });
-          }
         }
 
         navigation.replace('Home');

@@ -22,17 +22,13 @@ import {
   getAllProgress,
   setAuthFailureHandler,
   getMe,
-  registerNotificationDevice,
-  unregisterNotificationDevice,
-  getApiBaseUrl,
 } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../services/notificationService';
 import {
-  getRegistrationTokenForBackend,
-  getStoredExpoPushToken,
-  clearStoredExpoPushToken,
+  scheduleStaticDailyReminders,
+  clearStaticDailyReminders,
 } from '../services/localNotifications';
 
 export default function HomeScreen({ navigation }) {
@@ -92,31 +88,9 @@ export default function HomeScreen({ navigation }) {
         }
       } catch {}
 
-      await Promise.allSettled([loadClients(), syncNotificationRegistration()]);
+      await Promise.allSettled([loadClients(), scheduleStaticDailyReminders()]);
     } catch (error) {
       showToast('Error loading data', 'error');
-    }
-  };
-
-  const syncNotificationRegistration = async () => {
-    try {
-      const expoPushToken = await getRegistrationTokenForBackend();
-      if (!expoPushToken) {
-        console.log('Push registration skipped on home: no expo push token');
-        return;
-      }
-      await registerNotificationDevice(Platform.OS, expoPushToken);
-      console.log('Push device registered on home:', {
-        apiUrl: getApiBaseUrl(),
-        platform: Platform.OS,
-        tokenPreview: `${expoPushToken.slice(0, 20)}...`,
-      });
-    } catch (error) {
-      console.log('Push registration on home failed:', {
-        apiUrl: getApiBaseUrl(),
-        error: error?.response?.data?.message || error?.message || error,
-      });
-      // Keep app usable even if push registration fails.
     }
   };
 
@@ -164,15 +138,7 @@ export default function HomeScreen({ navigation }) {
 
   const handleLogout = useCallback(() => {
     const doLogout = async () => {
-      try {
-        const storedToken = await getStoredExpoPushToken();
-        if (storedToken) {
-          await unregisterNotificationDevice(storedToken);
-        }
-      } catch {
-      } finally {
-        await clearStoredExpoPushToken();
-      }
+      await clearStaticDailyReminders();
       await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       navigation.replace('Login');
     };

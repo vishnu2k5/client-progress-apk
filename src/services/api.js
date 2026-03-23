@@ -9,6 +9,7 @@ const API_URL =
   || 'https://client-progress.onrender.com';
 
 export const getApiBaseUrl = () => API_URL;
+const IS_DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -29,16 +30,18 @@ api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('token');
     if (token) {
+      config.headers = config.headers || {};
       config.headers.Authorization = `Bearer ${token}`;
     }
-    // Log API request
-    const reqLog = {
-      method: config.method?.toUpperCase(),
-      url: config.url,
-      hasAuth: !!token,
-      data: config.data,
-    };
-    console.log(`[API_REQUEST] ${config.method?.toUpperCase()} ${config.url}`, reqLog);
+    if (IS_DEV) {
+      const reqLog = {
+        method: config.method?.toUpperCase(),
+        url: config.url,
+        hasAuth: !!token,
+        data: config.data,
+      };
+      console.log(`[API_REQUEST] ${config.method?.toUpperCase()} ${config.url}`, reqLog);
+    }
     return config;
   },
   (error) => {
@@ -51,29 +54,36 @@ api.interceptors.request.use(
 // Handle auth errors + LOGGING
 api.interceptors.response.use(
   (response) => {
-    // Log success response
-    const resLog = {
-      method: response.config.method?.toUpperCase(),
-      url: response.config.url,
-      status: response.status,
-      dataPreview: typeof response.data === 'object' 
-        ? JSON.stringify(response.data).slice(0, 100)
-        : response.data,
-    };
-    console.log(`[API_SUCCESS] ${response.config.method?.toUpperCase()} ${response.config.url}`, resLog);
+    if (IS_DEV) {
+      const resLog = {
+        method: response.config.method?.toUpperCase(),
+        url: response.config.url,
+        status: response.status,
+        dataPreview: typeof response.data === 'object'
+          ? JSON.stringify(response.data).slice(0, 100)
+          : response.data,
+      };
+      console.log(`[API_SUCCESS] ${response.config.method?.toUpperCase()} ${response.config.url}`, resLog);
+    }
     return response;
   },
   async (error) => {
-    // Log error response
-    const errLog = {
-      method: error.config?.method?.toUpperCase(),
-      url: error.config?.url,
-      status: error.response?.status,
-      message: error.message,
-      serverMessage: error.response?.data?.message,
-    };
-    console.error(`[API_ERROR] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, errLog);
-    showToast(`❌ ${error.response?.status || 'Error'}: ${error.response?.data?.message || error.message}`, 'error');
+    if (IS_DEV) {
+      const errLog = {
+        method: error.config?.method?.toUpperCase(),
+        url: error.config?.url,
+        status: error.response?.status,
+        message: error.message,
+        serverMessage: error.response?.data?.message,
+      };
+      console.error(`[API_ERROR] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, errLog);
+    }
+
+    const serverMessage =
+      typeof error.response?.data?.message === 'string'
+        ? error.response.data.message
+        : error.message;
+    showToast(`❌ ${error.response?.status || 'Error'}: ${serverMessage}`, 'error');
     
     if (error.response?.status === 401) {
       await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
@@ -97,7 +107,15 @@ const fetchMultipart = async (path, method, formData) => {
     body: formData,
     headers,
   });
-  const json = await res.json();
+  const rawText = await res.text();
+  let json = {};
+  if (rawText) {
+    try {
+      json = JSON.parse(rawText);
+    } catch {
+      json = { message: rawText };
+    }
+  }
   if (!res.ok) {
     const err = new Error(json.message || 'Request failed');
     err.response = { data: json, status: res.status };
@@ -164,47 +182,6 @@ export const deleteClient = (id) => api.delete(`/delete/client/${id}`);
 export const getProgress = (clientId) => api.get(`/progress?clientId=${clientId}`);
 export const getAllProgress = () => api.get('/progress');
 export const updateProgress = (clientId, data) => api.put(`/update/progress?clientId=${clientId}`, data);
-
-// Notification APIs
-export const registerNotificationDevice = async (platform, expoPushToken, authToken = null) => {
-  console.log('[registerNotificationDevice] Starting', {
-    platform,
-    tokenPreview: expoPushToken ? `${expoPushToken.slice(0, 20)}...` : 'null',
-    hasAuthToken: !!authToken,
-  });
-  
-  try {
-    const config = authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : undefined;
-    const result = await api.post(
-      '/notifications/register-device',
-      { platform, expoPushToken },
-      config
-    );
-    console.log('[registerNotificationDevice] SUCCESS', {
-      deviceId: result.data?.data?._id,
-      message: result.data?.message,
-    });
-    showToast('Notification device registered successfully', 'success');
-    return result;
-  } catch (error) {
-    console.error('[registerNotificationDevice] FAILED', {
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      error: error.response?.data?.error,
-    });
-    showToast(`❌ Registration Failed: ${error.response?.data?.message || error.message}`, 'error');
-    throw error;
-  }
-};
-
-export const unregisterNotificationDevice = (expoPushToken, authToken = null) =>
-  api.delete(
-    '/notifications/register-device',
-    authToken
-      ? { data: { expoPushToken }, headers: { Authorization: `Bearer ${authToken}` } }
-      : { data: { expoPushToken } }
-  );
-export const sendNotificationTest = () => api.post('/notifications/test');
 
 // Organization APIs (public)
 export const getOrganizations = () => api.get('/organizations');
