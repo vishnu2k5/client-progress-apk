@@ -14,9 +14,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { login, register } from '../services/api';
+import { login, register, registerNotificationDevice } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
+import { getExpoPushToken } from '../services/localNotifications';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -78,6 +79,16 @@ export default function LoginScreen({ navigation }) {
         if (orgLogo) {
           await AsyncStorage.setItem('orgLogo', orgLogo);
         }
+
+        try {
+          const expoPushToken = await getExpoPushToken();
+          if (expoPushToken) {
+            await registerNotificationDevice(Platform.OS, expoPushToken);
+          }
+        } catch (pushError) {
+          console.log('Push registration on login failed:', pushError?.message || pushError);
+        }
+
         navigation.replace('Home');
       } else {
         if (!organizationName.trim()) { showToast('Organization name is required', 'error'); setLoading(false); return; }

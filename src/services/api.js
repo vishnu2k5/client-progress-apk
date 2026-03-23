@@ -1,10 +1,11 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-// Update this to your server URL
-const API_URL = 'https://client-progress.onrender.com';
-// const API_URL = 'http://localhost:3000';
+const API_URL =
+  Constants?.expoConfig?.extra?.apiUrl
+  || 'https://client-progress.onrender.com';
 
 const api = axios.create({
   baseURL: API_URL,

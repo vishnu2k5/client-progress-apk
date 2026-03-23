@@ -92,8 +92,7 @@ export default function HomeScreen({ navigation }) {
         }
       } catch {}
 
-      await loadClients();
-      await syncNotificationRegistration();
+      await Promise.allSettled([loadClients(), syncNotificationRegistration()]);
     } catch (error) {
       showToast('Error loading data', 'error');
     }
@@ -104,7 +103,8 @@ export default function HomeScreen({ navigation }) {
       const expoPushToken = await getExpoPushToken();
       if (!expoPushToken) return;
       await registerNotificationDevice(Platform.OS, expoPushToken);
-    } catch {
+    } catch (error) {
+      console.log('Push registration on home failed:', error?.response?.data?.message || error?.message || error);
       // Keep app usable even if push registration fails.
     }
   };
