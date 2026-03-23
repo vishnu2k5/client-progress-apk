@@ -130,10 +130,19 @@ export const getAllProgress = () => api.get('/progress');
 export const updateProgress = (clientId, data) => api.put(`/update/progress?clientId=${clientId}`, data);
 
 // Notification APIs
-export const registerNotificationDevice = (platform, expoPushToken) =>
-  api.post('/notifications/register-device', { platform, expoPushToken });
-export const unregisterNotificationDevice = (expoPushToken) =>
-  api.delete('/notifications/register-device', { data: { expoPushToken } });
+export const registerNotificationDevice = (platform, expoPushToken, authToken = null) =>
+  api.post(
+    '/notifications/register-device',
+    { platform, expoPushToken },
+    authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : undefined
+  );
+export const unregisterNotificationDevice = (expoPushToken, authToken = null) =>
+  api.delete(
+    '/notifications/register-device',
+    authToken
+      ? { data: { expoPushToken }, headers: { Authorization: `Bearer ${authToken}` } }
+      : { data: { expoPushToken } }
+  );
 export const sendNotificationTest = () => api.post('/notifications/test');
 
 // Organization APIs (public)

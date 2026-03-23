@@ -83,7 +83,7 @@ export default function LoginScreen({ navigation }) {
         try {
           const expoPushToken = await getExpoPushToken();
           if (expoPushToken) {
-            await registerNotificationDevice(Platform.OS, expoPushToken);
+            await registerNotificationDevice(Platform.OS, expoPushToken, res.data.token);
             console.log('Push device registered on login:', {
               apiUrl: getApiBaseUrl(),
               platform: Platform.OS,
@@ -93,6 +93,19 @@ export default function LoginScreen({ navigation }) {
             console.log('Push registration skipped on login: no expo push token');
           }
         } catch (pushError) {
+          // Retry once in case the app comes online a moment later.
+          try {
+            const retryToken = await getExpoPushToken();
+            if (retryToken) {
+              await registerNotificationDevice(Platform.OS, retryToken, res.data.token);
+              console.log('Push device registered on login retry:', {
+                apiUrl: getApiBaseUrl(),
+                platform: Platform.OS,
+                tokenPreview: `${retryToken.slice(0, 20)}...`,
+              });
+            }
+          } catch {
+          }
           console.log('Push registration on login failed:', {
             apiUrl: getApiBaseUrl(),
             error: pushError?.response?.data?.message || pushError?.message || pushError,
