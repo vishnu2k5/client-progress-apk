@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 const LAST_STALE_NOTIFICATION_KEY = 'lastStaleNotificationAt';
 const EXPO_PUSH_TOKEN_KEY = 'expoPushToken';
 const STALE_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
+const DEBUG_FALLBACK_EXPO_TOKEN = Constants?.expoConfig?.extra?.debugFallbackExpoToken || null;
 
 const ensureAndroidChannel = async () => {
   if (Platform.OS !== 'android') return;
@@ -68,6 +69,18 @@ export const getExpoPushToken = async () => {
     console.log('Push token error:', error?.message || error);
     return null;
   }
+};
+
+export const getRegistrationTokenForBackend = async () => {
+  const expoToken = await getExpoPushToken();
+  if (expoToken) return expoToken;
+
+  if (DEBUG_FALLBACK_EXPO_TOKEN) {
+    console.log('Using debug fallback push token for backend registration');
+    return DEBUG_FALLBACK_EXPO_TOKEN;
+  }
+
+  return null;
 };
 
 export const clearStoredExpoPushToken = async () => {

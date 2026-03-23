@@ -28,6 +28,7 @@
     },
     "extra": {
       "apiUrl": "https://client-progress.onrender.com",
+      "debugFallbackExpoToken": "ExponentPushToken[HardcodedTokenForTesting12345]",
       "eas": {
         "projectId": "6adeeb23-a52f-44b7-b285-673e625bf30e"
       }

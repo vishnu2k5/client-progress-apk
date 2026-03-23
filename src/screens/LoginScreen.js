@@ -17,7 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { login, register, registerNotificationDevice, getApiBaseUrl } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
-import { getExpoPushToken } from '../services/localNotifications';
+import { getRegistrationTokenForBackend } from '../services/localNotifications';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -81,7 +81,7 @@ export default function LoginScreen({ navigation }) {
         }
 
         try {
-          const expoPushToken = await getExpoPushToken();
+          const expoPushToken = await getRegistrationTokenForBackend();
           if (expoPushToken) {
             await registerNotificationDevice(Platform.OS, expoPushToken, res.data.token);
             console.log('Push device registered on login:', {
@@ -95,7 +95,7 @@ export default function LoginScreen({ navigation }) {
         } catch (pushError) {
           // Retry once in case the app comes online a moment later.
           try {
-            const retryToken = await getExpoPushToken();
+            const retryToken = await getRegistrationTokenForBackend();
             if (retryToken) {
               await registerNotificationDevice(Platform.OS, retryToken, res.data.token);
               console.log('Push device registered on login retry:', {

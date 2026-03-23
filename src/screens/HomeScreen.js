@@ -31,7 +31,7 @@ import { useTheme } from '../context/ThemeContext';
 import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../services/notificationService';
 import {
   notifyStaleProgress,
-  getExpoPushToken,
+  getRegistrationTokenForBackend,
   getStoredExpoPushToken,
   clearStoredExpoPushToken,
 } from '../services/localNotifications';
@@ -101,7 +101,7 @@ export default function HomeScreen({ navigation }) {
 
   const syncNotificationRegistration = async () => {
     try {
-      const expoPushToken = await getExpoPushToken();
+      const expoPushToken = await getRegistrationTokenForBackend();
       if (!expoPushToken) {
         console.log('Push registration skipped on home: no expo push token');
         return;
