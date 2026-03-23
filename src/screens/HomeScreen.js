@@ -24,6 +24,7 @@ import {
   getMe,
   registerNotificationDevice,
   unregisterNotificationDevice,
+  getApiBaseUrl,
 } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
@@ -101,10 +102,21 @@ export default function HomeScreen({ navigation }) {
   const syncNotificationRegistration = async () => {
     try {
       const expoPushToken = await getExpoPushToken();
-      if (!expoPushToken) return;
+      if (!expoPushToken) {
+        console.log('Push registration skipped on home: no expo push token');
+        return;
+      }
       await registerNotificationDevice(Platform.OS, expoPushToken);
+      console.log('Push device registered on home:', {
+        apiUrl: getApiBaseUrl(),
+        platform: Platform.OS,
+        tokenPreview: `${expoPushToken.slice(0, 20)}...`,
+      });
     } catch (error) {
-      console.log('Push registration on home failed:', error?.response?.data?.message || error?.message || error);
+      console.log('Push registration on home failed:', {
+        apiUrl: getApiBaseUrl(),
+        error: error?.response?.data?.message || error?.message || error,
+      });
       // Keep app usable even if push registration fails.
     }
   };

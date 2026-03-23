@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { login, register, registerNotificationDevice } from '../services/api';
+import { login, register, registerNotificationDevice, getApiBaseUrl } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { getExpoPushToken } from '../services/localNotifications';
@@ -84,9 +84,19 @@ export default function LoginScreen({ navigation }) {
           const expoPushToken = await getExpoPushToken();
           if (expoPushToken) {
             await registerNotificationDevice(Platform.OS, expoPushToken);
+            console.log('Push device registered on login:', {
+              apiUrl: getApiBaseUrl(),
+              platform: Platform.OS,
+              tokenPreview: `${expoPushToken.slice(0, 20)}...`,
+            });
+          } else {
+            console.log('Push registration skipped on login: no expo push token');
           }
         } catch (pushError) {
-          console.log('Push registration on login failed:', pushError?.message || pushError);
+          console.log('Push registration on login failed:', {
+            apiUrl: getApiBaseUrl(),
+            error: pushError?.response?.data?.message || pushError?.message || pushError,
+          });
         }
 
         navigation.replace('Home');

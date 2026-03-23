@@ -44,20 +44,30 @@ const getProjectId = () => {
 export const getStoredExpoPushToken = async () => AsyncStorage.getItem(EXPO_PUSH_TOKEN_KEY);
 
 export const getExpoPushToken = async () => {
-  const hasPermission = await ensureNotificationPermission();
-  if (!hasPermission) return null;
+  try {
+    const hasPermission = await ensureNotificationPermission();
+    if (!hasPermission) {
+      console.log('Push token skipped: notification permission not granted');
+      return null;
+    }
 
-  const projectId = getProjectId();
-  const tokenResponse = projectId
-    ? await Notifications.getExpoPushTokenAsync({ projectId })
-    : await Notifications.getExpoPushTokenAsync();
+    const projectId = getProjectId();
+    const tokenResponse = projectId
+      ? await Notifications.getExpoPushTokenAsync({ projectId })
+      : await Notifications.getExpoPushTokenAsync();
 
-  const expoPushToken = tokenResponse?.data || null;
-  if (expoPushToken) {
-    await AsyncStorage.setItem(EXPO_PUSH_TOKEN_KEY, expoPushToken);
+    const expoPushToken = tokenResponse?.data || null;
+    if (expoPushToken) {
+      await AsyncStorage.setItem(EXPO_PUSH_TOKEN_KEY, expoPushToken);
+      return expoPushToken;
+    }
+
+    console.log('Push token skipped: no token returned from Expo');
+    return null;
+  } catch (error) {
+    console.log('Push token error:', error?.message || error);
+    return null;
   }
-
-  return expoPushToken;
 };
 
 export const clearStoredExpoPushToken = async () => {

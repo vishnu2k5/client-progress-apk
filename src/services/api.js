@@ -7,6 +7,8 @@ const API_URL =
   Constants?.expoConfig?.extra?.apiUrl
   || 'https://client-progress.onrender.com';
 
+export const getApiBaseUrl = () => API_URL;
+
 const api = axios.create({
   baseURL: API_URL,
   timeout: 15000,
