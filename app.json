@@ -28,16 +28,15 @@
     },
     "extra": {
       "apiUrl": "https://client-progress.onrender.com",
-      "debugFallbackExpoToken": "",
+      "debugFallbackExpoToken": "ExponentPushToken[AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA]",
       "eas": {
-        "projectId": "6adeeb23-a52f-44b7-b285-673e625bf30e"
+        "projectId": "3cb06426-36ee-497c-bc1d-b2f3f02948ad"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "updates": {
-      "url": "https://u.expo.dev/6adeeb23-a52f-44b7-b285-673e625bf30e"
-    }
+    "updates": {},
+    "owner": "vishnu0068"
   }
 }

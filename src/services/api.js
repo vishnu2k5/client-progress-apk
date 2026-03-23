@@ -2,6 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
+import { showToast } from '../components/Toast';
 
 const API_URL =
   Constants?.expoConfig?.extra?.apiUrl
@@ -23,22 +24,59 @@ export const setAuthFailureHandler = (handler) => {
   onAuthFailure = handler;
 };
 
-// Add token to requests
+// Add token to requests + LOGGING
 api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    // Log API request
+    const reqLog = {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      hasAuth: !!token,
+      data: config.data,
+    };
+    console.log(`[API_REQUEST] ${config.method?.toUpperCase()} ${config.url}`, reqLog);
+    showToast(`📤 ${config.method?.toUpperCase()} ${config.url.split('/').pop()}`, 'info');
     return config;
   },
-  (error) => Promise.reject(error)
+  (error) => {
+    console.error('[API_REQUEST_ERROR]', error);
+    showToast(`❌ Request Error: ${error.message}`, 'error');
+    return Promise.reject(error);
+  }
 );
 
-// Handle auth errors
+// Handle auth errors + LOGGING
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Log success response
+    const resLog = {
+      method: response.config.method?.toUpperCase(),
+      url: response.config.url,
+      status: response.status,
+      dataPreview: typeof response.data === 'object' 
+        ? JSON.stringify(response.data).slice(0, 100)
+        : response.data,
+    };
+    console.log(`[API_SUCCESS] ${response.config.method?.toUpperCase()} ${response.config.url}`, resLog);
+    showToast(`✅ ${response.status} ${response.config.url.split('/').pop()}`, 'success');
+    return response;
+  },
   async (error) => {
+    // Log error response
+    const errLog = {
+      method: error.config?.method?.toUpperCase(),
+      url: error.config?.url,
+      status: error.response?.status,
+      message: error.message,
+      serverMessage: error.response?.data?.message,
+    };
+    console.error(`[API_ERROR] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, errLog);
+    showToast(`❌ ${error.response?.status || 'Error'}: ${error.response?.data?.message || error.message}`, 'error');
+    
     if (error.response?.status === 401) {
       await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       if (onAuthFailure) onAuthFailure();
@@ -130,12 +168,37 @@ export const getAllProgress = () => api.get('/progress');
 export const updateProgress = (clientId, data) => api.put(`/update/progress?clientId=${clientId}`, data);
 
 // Notification APIs
-export const registerNotificationDevice = (platform, expoPushToken, authToken = null) =>
-  api.post(
-    '/notifications/register-device',
-    { platform, expoPushToken },
-    authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : undefined
-  );
+export const registerNotificationDevice = async (platform, expoPushToken, authToken = null) => {
+  console.log('[registerNotificationDevice] Starting', {
+    platform,
+    tokenPreview: expoPushToken ? `${expoPushToken.slice(0, 20)}...` : 'null',
+    hasAuthToken: !!authToken,
+  });
+  
+  try {
+    const config = authToken ? { headers: { Authorization: `Bearer ${authToken}` } } : undefined;
+    const result = await api.post(
+      '/notifications/register-device',
+      { platform, expoPushToken },
+      config
+    );
+    console.log('[registerNotificationDevice] SUCCESS', {
+      deviceId: result.data?.data?._id,
+      message: result.data?.message,
+    });
+    showToast(`✅ Device Registered: ${result.data?.message}`, 'success');
+    return result;
+  } catch (error) {
+    console.error('[registerNotificationDevice] FAILED', {
+      status: error.response?.status,
+      message: error.response?.data?.message || error.message,
+      error: error.response?.data?.error,
+    });
+    showToast(`❌ Registration Failed: ${error.response?.data?.message || error.message}`, 'error');
+    throw error;
+  }
+};
+
 export const unregisterNotificationDevice = (expoPushToken, authToken = null) =>
   api.delete(
     '/notifications/register-device',

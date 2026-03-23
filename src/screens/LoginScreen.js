@@ -81,35 +81,54 @@ export default function LoginScreen({ navigation }) {
         }
 
         try {
+          console.log('[LoginScreen] Starting notification device registration...');
           const expoPushToken = await getRegistrationTokenForBackend();
+          console.log('[LoginScreen] Got push token:', {
+            hasToken: !!expoPushToken,
+            tokenPreview: expoPushToken ? `${expoPushToken.slice(0, 20)}...` : 'null',
+          });
+          
           if (expoPushToken) {
-            await registerNotificationDevice(Platform.OS, expoPushToken, res.data.token);
-            console.log('Push device registered on login:', {
+            console.log('[LoginScreen] Calling registerNotificationDevice with token...');
+            const regRes = await registerNotificationDevice(Platform.OS, expoPushToken, res.data.token);
+            console.log('[LoginScreen] Push device registered (SUCCESS):', {
               apiUrl: getApiBaseUrl(),
               platform: Platform.OS,
               tokenPreview: `${expoPushToken.slice(0, 20)}...`,
+              response: regRes?.data?.message,
             });
           } else {
-            console.log('Push registration skipped on login: no expo push token');
+            console.log('[LoginScreen] SKIPPED: no expo push token obtained');
           }
         } catch (pushError) {
+          console.log('[LoginScreen] FAILED on first attempt:', {
+            message: pushError?.message,
+            apiError: pushError?.response?.data?.message,
+          });
           // Retry once in case the app comes online a moment later.
           try {
+            console.log('[LoginScreen] Retrying notification device registration...');
             const retryToken = await getRegistrationTokenForBackend();
+            console.log('[LoginScreen] Got retry token:', {
+              hasToken: !!retryToken,
+              tokenPreview: retryToken ? `${retryToken.slice(0, 20)}...` : 'null',
+            });
+            
             if (retryToken) {
-              await registerNotificationDevice(Platform.OS, retryToken, res.data.token);
-              console.log('Push device registered on login retry:', {
+              const regRes = await registerNotificationDevice(Platform.OS, retryToken, res.data.token);
+              console.log('[LoginScreen] Push device registered on RETRY (SUCCESS):', {
                 apiUrl: getApiBaseUrl(),
                 platform: Platform.OS,
                 tokenPreview: `${retryToken.slice(0, 20)}...`,
+                response: regRes?.data?.message,
               });
             }
-          } catch {
+          } catch (retryError) {
+            console.log('[LoginScreen] FAILED on retry:', {
+              message: retryError?.message,
+              apiError: retryError?.response?.data?.message,
+            });
           }
-          console.log('Push registration on login failed:', {
-            apiUrl: getApiBaseUrl(),
-            error: pushError?.response?.data?.message || pushError?.message || pushError,
-          });
         }
 
         navigation.replace('Home');
