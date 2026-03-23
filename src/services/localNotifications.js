@@ -1,14 +1,14 @@
-import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 
 const LOCAL_REMINDER_IDS_KEY = 'localReminderNotificationIdsV1';
+const LAST_SCHEDULED_KEY = 'localReminderLastScheduledDate'; // 🆕
 const DAILY_REMINDER_HOURS = [9, 11, 13, 15, 17];
 const STATIC_REMINDER_TYPE = 'static_progress_reminder';
 
 const ensureAndroidChannel = async () => {
   if (Platform.OS !== 'android') return;
-
   await Notifications.setNotificationChannelAsync('progress-reminders', {
     name: 'Progress Reminders',
     importance: Notifications.AndroidImportance.HIGH,
@@ -19,17 +19,13 @@ const ensureAndroidChannel = async () => {
 
 export const ensureNotificationPermission = async () => {
   if (Platform.OS === 'web') return false;
-
   const settings = await Notifications.getPermissionsAsync();
   let status = settings.status;
-
   if (status !== 'granted') {
     const requested = await Notifications.requestPermissionsAsync();
     status = requested.status;
   }
-
   if (status !== 'granted') return false;
-
   await ensureAndroidChannel();
   return true;
 };
@@ -49,45 +45,44 @@ const setStoredReminderIds = async (ids) => {
   await AsyncStorage.setItem(LOCAL_REMINDER_IDS_KEY, JSON.stringify(ids));
 };
 
-const getCurrentScheduledIds = async () => {
-  try {
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    return new Set(scheduled.map((item) => item.identifier));
-  } catch {
-    return new Set();
-  }
-};
-
 export const clearStaticDailyReminders = async () => {
   const ids = await getStoredReminderIds();
   for (const id of ids) {
     try {
       await Notifications.cancelScheduledNotificationAsync(id);
-    } catch {
-    }
+    } catch {}
   }
-  await AsyncStorage.removeItem(LOCAL_REMINDER_IDS_KEY);
+  await AsyncStorage.multiRemove([LOCAL_REMINDER_IDS_KEY, LAST_SCHEDULED_KEY]); // 🆕 clear date too
 };
 
 export const scheduleStaticDailyReminders = async () => {
-  if (Platform.OS === 'web') {
-    return { ok: false, reason: 'web-not-supported' };
-  }
+  if (Platform.OS === 'web') return { ok: false, reason: 'web-not-supported' };
 
   const hasPermission = await ensureNotificationPermission();
-  if (!hasPermission) {
-    return { ok: false, reason: 'permission-not-granted' };
+  if (!hasPermission) return { ok: false, reason: 'permission-not-granted' };
+
+  // 🆕 Guard: only re-schedule once per day at most
+  const today = new Date().toDateString();
+  const lastScheduled = await AsyncStorage.getItem(LAST_SCHEDULED_KEY);
+  if (lastScheduled === today) {
+    return { ok: true, skipped: true, reason: 'already-scheduled-today' };
   }
 
+  // Also check if valid IDs are already in the system
   const existingIds = await getStoredReminderIds();
   if (existingIds.length === DAILY_REMINDER_HOURS.length) {
-    const scheduledIdSet = await getCurrentScheduledIds();
-    const allPresent = existingIds.every((id) => scheduledIdSet.has(id));
-    if (allPresent) {
-      return { ok: true, scheduledCount: existingIds.length, skipped: true };
-    }
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const scheduledIdSet = new Set(scheduled.map((item) => item.identifier));
+      const allPresent = existingIds.every((id) => scheduledIdSet.has(id));
+      if (allPresent) {
+        await AsyncStorage.setItem(LAST_SCHEDULED_KEY, today); // 🆕 mark today
+        return { ok: true, skipped: true };
+      }
+    } catch {}
   }
 
+  // Clear old ones before scheduling fresh
   if (existingIds.length) {
     await clearStaticDailyReminders();
   }
@@ -100,22 +95,24 @@ export const scheduleStaticDailyReminders = async () => {
           title: 'Progress reminder',
           body: 'Please update your client progress today.',
           sound: true,
+          ...(Platform.OS === 'android' && { channelId: 'progress-reminders' }), // 🆕 moved here
           data: { type: STATIC_REMINDER_TYPE, hour },
         },
         trigger: {
+          // 🆕 explicit daily calendar trigger
+          type: Notifications.SchedulableTriggerInputTypes?.DAILY ?? 'daily',
           hour,
           minute: 0,
-          repeats: true,
-          channelId: Platform.OS === 'android' ? 'progress-reminders' : undefined,
         },
       });
       scheduledIds.push(id);
     }
   } catch (error) {
     await clearStaticDailyReminders();
-    return { ok: false, reason: 'schedule-failed', error: error?.message || 'unknown' };
+    return { ok: false, reason: 'schedule-failed', error: error?.message };
   }
 
   await setStoredReminderIds(scheduledIds);
+  await AsyncStorage.setItem(LAST_SCHEDULED_KEY, today); // 🆕 save today's date
   return { ok: true, scheduledCount: scheduledIds.length, skipped: false };
 };

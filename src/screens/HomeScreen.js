@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -47,6 +47,12 @@ export default function HomeScreen({ navigation }) {
     return clients.filter((c) => c.clientName.toLowerCase().includes(query));
   }, [clients, search]);
 
+  // ✅ FIX: Schedule notifications ONCE on mount only — not on every screen focus
+  useEffect(() => {
+    scheduleStaticDailyReminders();
+  }, []);
+
+  // ✅ FIX: useFocusEffect only handles data loading — no scheduling here
   useFocusEffect(
     useCallback(() => {
       setAuthFailureHandler(() => navigation.replace('Login'));
@@ -77,7 +83,6 @@ export default function HomeScreen({ navigation }) {
           setOrgLogo(org.logo);
           await AsyncStorage.setItem('orgLogo', org.logo);
         } else {
-          // Fall back to appLogo if user explicitly set one via the login prompt
           const savedAppLogo = await AsyncStorage.getItem('appLogo');
           if (savedAppLogo) {
             setOrgLogo(savedAppLogo);
@@ -88,7 +93,8 @@ export default function HomeScreen({ navigation }) {
         }
       } catch {}
 
-      await Promise.allSettled([loadClients(), scheduleStaticDailyReminders()]);
+      // ✅ FIX: Removed scheduleStaticDailyReminders() from here
+      await loadClients();
     } catch (error) {
       showToast('Error loading data', 'error');
     }
