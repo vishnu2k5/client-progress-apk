@@ -31,6 +31,7 @@ export default function ProfileScreen({ navigation }) {
   }, []);
 
   const loadProfile = async () => {
+    setLoading(true);
     try {
       const res = await getMe();
       const org = res.data.organization;
@@ -99,6 +100,30 @@ export default function ProfileScreen({ navigation }) {
       <View style={[styles.loadingContainer, { backgroundColor: t.bg }]}>
         <ActivityIndicator size="large" color={t.accent} />
       </View>
+    );
+  }
+
+  // FIX #7: Show a helpful fallback if profile failed to load instead of blank screen
+  if (!profile) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: t.bg }]}>
+        <View style={[styles.header, { backgroundColor: t.headerBg, borderColor: t.border }]}>
+          <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+            <Text style={[styles.backText, { color: t.text }]}>←</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: t.text }]}>Profile</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={[styles.errorText, { color: t.text }]}>Could not load profile</Text>
+          <TouchableOpacity
+            style={[styles.retryBtn, { backgroundColor: t.accent }]}
+            onPress={loadProfile}
+          >
+            <Text style={styles.retryBtnText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
   }
 
@@ -221,6 +246,10 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  errorText: { fontSize: 17, fontWeight: '500', marginBottom: 20 },
+  retryBtn: { paddingHorizontal: 30, paddingVertical: 14, borderRadius: 12 },
+  retryBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -241,12 +270,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  avatarImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    marginBottom: 10,
-  },
+  avatarImage: { width: 90, height: 90, borderRadius: 45, marginBottom: 10 },
   avatarText: { fontSize: 36, fontWeight: 'bold', color: '#fff' },
   cameraOverlay: {
     position: 'absolute',

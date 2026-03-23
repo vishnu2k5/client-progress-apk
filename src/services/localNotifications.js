@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 const LOCAL_REMINDER_IDS_KEY = 'localReminderNotificationIdsV1';
-const LAST_SCHEDULED_KEY = 'localReminderLastScheduledDate'; // 🆕
+const LAST_SCHEDULED_KEY = 'localReminderLastScheduledDate';
 const DAILY_REMINDER_HOURS = [9, 11, 13, 15, 17];
 const STATIC_REMINDER_TYPE = 'static_progress_reminder';
 
@@ -52,7 +52,7 @@ export const clearStaticDailyReminders = async () => {
       await Notifications.cancelScheduledNotificationAsync(id);
     } catch {}
   }
-  await AsyncStorage.multiRemove([LOCAL_REMINDER_IDS_KEY, LAST_SCHEDULED_KEY]); // 🆕 clear date too
+  await AsyncStorage.multiRemove([LOCAL_REMINDER_IDS_KEY, LAST_SCHEDULED_KEY]);
 };
 
 export const scheduleStaticDailyReminders = async () => {
@@ -61,14 +61,14 @@ export const scheduleStaticDailyReminders = async () => {
   const hasPermission = await ensureNotificationPermission();
   if (!hasPermission) return { ok: false, reason: 'permission-not-granted' };
 
-  // 🆕 Guard: only re-schedule once per day at most
+  // Guard: only re-schedule once per day at most
   const today = new Date().toDateString();
   const lastScheduled = await AsyncStorage.getItem(LAST_SCHEDULED_KEY);
   if (lastScheduled === today) {
     return { ok: true, skipped: true, reason: 'already-scheduled-today' };
   }
 
-  // Also check if valid IDs are already in the system
+  // Also check if valid IDs are already registered in the OS
   const existingIds = await getStoredReminderIds();
   if (existingIds.length === DAILY_REMINDER_HOURS.length) {
     try {
@@ -76,7 +76,7 @@ export const scheduleStaticDailyReminders = async () => {
       const scheduledIdSet = new Set(scheduled.map((item) => item.identifier));
       const allPresent = existingIds.every((id) => scheduledIdSet.has(id));
       if (allPresent) {
-        await AsyncStorage.setItem(LAST_SCHEDULED_KEY, today); // 🆕 mark today
+        await AsyncStorage.setItem(LAST_SCHEDULED_KEY, today);
         return { ok: true, skipped: true };
       }
     } catch {}
@@ -95,11 +95,12 @@ export const scheduleStaticDailyReminders = async () => {
           title: 'Progress reminder',
           body: 'Please update your client progress today.',
           sound: true,
-          ...(Platform.OS === 'android' && { channelId: 'progress-reminders' }), // 🆕 moved here
+          // channelId belongs in content, not in trigger
+          ...(Platform.OS === 'android' && { channelId: 'progress-reminders' }),
           data: { type: STATIC_REMINDER_TYPE, hour },
         },
         trigger: {
-          // 🆕 explicit daily calendar trigger
+          // Explicit daily calendar trigger — prevents firing immediately on Android
           type: Notifications.SchedulableTriggerInputTypes?.DAILY ?? 'daily',
           hour,
           minute: 0,
@@ -113,6 +114,6 @@ export const scheduleStaticDailyReminders = async () => {
   }
 
   await setStoredReminderIds(scheduledIds);
-  await AsyncStorage.setItem(LAST_SCHEDULED_KEY, today); // 🆕 save today's date
+  await AsyncStorage.setItem(LAST_SCHEDULED_KEY, today);
   return { ok: true, scheduledCount: scheduledIds.length, skipped: false };
 };

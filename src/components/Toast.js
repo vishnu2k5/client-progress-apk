@@ -9,6 +9,7 @@ export const showToast = (message, type = 'success') => {
   }
 };
 
+// FIX #14: Added 'warning' type (amber) alongside success and error
 export default function Toast() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const animationRef = useRef(null);
@@ -19,7 +20,6 @@ export default function Toast() {
   useEffect(() => {
     toastRef = {
       show: (msg, t = 'success') => {
-        // Stop any running animation before starting a new one
         if (animationRef.current) {
           animationRef.current.stop();
           fadeAnim.setValue(0);
@@ -66,10 +66,16 @@ export default function Toast() {
         styles.container,
         type === 'success' && styles.success,
         type === 'error' && styles.error,
-        { opacity: fadeAnim, transform: [{ translateY: fadeAnim.interpolate({
-          inputRange: [0, 1],
-          outputRange: [50, 0],
-        }) }] },
+        type === 'warning' && styles.warning, // FIX #14
+        {
+          opacity: fadeAnim,
+          transform: [{
+            translateY: fadeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [50, 0],
+            }),
+          }],
+        },
       ]}
     >
       <Text style={styles.text}>{message}</Text>
@@ -95,6 +101,10 @@ const styles = StyleSheet.create({
   },
   error: {
     backgroundColor: '#dc2626',
+  },
+  // FIX #14: amber warning style
+  warning: {
+    backgroundColor: '#f59e0b',
   },
   text: {
     color: '#fff',

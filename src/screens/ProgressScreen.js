@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,7 @@ export default function ProgressScreen({ route, navigation }) {
   const [progress, setProgress] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
+  const [delivering, setDelivering] = useState(false); // FIX #2: dedicated loading state
   const [inputs, setInputs] = useState({});
   const [editingName, setEditingName] = useState(false);
   const [clientNameInput, setClientNameInput] = useState(initialName);
@@ -47,6 +48,8 @@ export default function ProgressScreen({ route, navigation }) {
   }, []);
 
   const loadProgress = async () => {
+    // FIX #6: always show loading indicator when fetching
+    setLoading(true);
     try {
       const res = await getProgress(clientId);
       const data = res.data[0] || {};
@@ -61,8 +64,9 @@ export default function ProgressScreen({ route, navigation }) {
       setInputs(init);
     } catch (error) {
       showToast('Error loading progress', 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const getTodayDate = () => formatDate(new Date());
@@ -91,14 +95,22 @@ export default function ProgressScreen({ route, navigation }) {
     return value.replace(/-/g, '/');
   };
 
-  const handleSave = async (stageKey, isOrder) => {
+  // FIX #12: useCallback so handleSave is stable when inputs/clientId don't change
+  const handleSave = useCallback(async (stageKey, isOrder) => {
     setSaving(stageKey);
     try {
       const assignee = inputs[`${stageKey}-assignee`] || null;
       let stageData = { assignee };
       if (isOrder) {
-        const v = inputs[`${stageKey}-value`];
-        stageData.value = v ? Number(v) : null;
+        // FIX #16: validate order value is a valid number
+        const raw = inputs[`${stageKey}-value`]?.trim();
+        const parsed = raw ? parseFloat(raw) : null;
+        if (raw && isNaN(parsed)) {
+          showToast('Order value must be a number', 'error');
+          setSaving(null);
+          return;
+        }
+        stageData.value = parsed;
       } else {
         const d = inputs[`${stageKey}-date`];
         stageData.date = d || getTodayDate();
@@ -109,18 +121,24 @@ export default function ProgressScreen({ route, navigation }) {
       showToast('Saved!', 'success');
     } catch (error) {
       showToast('Error saving', 'error');
+    } finally {
+      setSaving(null);
     }
-    setSaving(null);
-  };
+  }, [inputs, clientId]);
 
+  // FIX #2: Deliver button is now a proper toggle with loading state
+  // It is never permanently disabled — user can un-deliver at any time
   const handleToggleDelivered = async () => {
     const newStatus = !progress.delivered;
+    setDelivering(true);
     try {
       await updateProgress(clientId, { delivered: newStatus });
       setProgress((prev) => ({ ...prev, delivered: newStatus }));
       showToast(newStatus ? 'Marked as Delivered!' : 'Marked as Pending', 'success');
     } catch (error) {
       showToast('Error updating status', 'error');
+    } finally {
+      setDelivering(false);
     }
   };
 
@@ -180,7 +198,11 @@ export default function ProgressScreen({ route, navigation }) {
     return isOrder ? !!(d.assignee || d.value) : !!(d.assignee || d.date);
   };
 
-  const firstIncomplete = STAGES.findIndex((s) => !hasValue(s.key, s.isOrder));
+  // FIX #9: useMemo so this only recalculates when progress changes
+  const firstIncomplete = useMemo(
+    () => STAGES.findIndex((s) => !hasValue(s.key, s.isOrder)),
+    [progress]
+  );
 
   if (loading) {
     return (
@@ -413,15 +435,24 @@ export default function ProgressScreen({ route, navigation }) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Deliver Button */}
+      {/* FIX #2: Deliver button is a true toggle — never permanently disabled
+          Shows loading spinner while saving, correct label for both states */}
       <TouchableOpacity
-        style={[styles.deliverBtn, { backgroundColor: progress.delivered ? t.delivered : t.pending }]}
+        style={[
+          styles.deliverBtn,
+          { backgroundColor: progress.delivered ? t.delivered : t.pending },
+          delivering && { opacity: 0.7 },
+        ]}
         onPress={handleToggleDelivered}
-        disabled={progress.delivered}
+        disabled={delivering}
       >
-        <Text style={styles.deliverBtnText}>
-          {progress.delivered ? '✓ Delivered' : '📦 Mark as Delivered'}
-        </Text>
+        {delivering ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Text style={styles.deliverBtnText}>
+            {progress.delivered ? '✓ Delivered — Tap to undo' : '📦 Mark as Delivered'}
+          </Text>
+        )}
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -488,9 +519,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  dateInputWebWrap: {
-    position: 'relative',
-  },
+  dateInputWebWrap: { position: 'relative' },
   dateInputText: { fontSize: 15, flex: 1 },
   dateIcon: { fontSize: 16, marginLeft: 8 },
   webNativeDateInput: {

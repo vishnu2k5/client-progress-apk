@@ -17,7 +17,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { login, register } from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
-import { scheduleStaticDailyReminders } from '../services/localNotifications';
+
+// FIX #3: Removed scheduleStaticDailyReminders import — HomeScreen handles this
+// Calling it here caused duplicate scheduling and showed a confusing toast to users
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -69,6 +71,23 @@ export default function LoginScreen({ navigation }) {
       return;
     }
 
+    // FIX #8: validate register fields BEFORE setLoading(true) so we never
+    // need to call setLoading(false) inside the validation — finally handles it
+    if (!isLogin) {
+      if (!organizationName.trim()) {
+        showToast('Organization name is required', 'error');
+        return;
+      }
+      if (!phone.trim()) {
+        showToast('Phone number is required', 'error');
+        return;
+      }
+      if (!address.trim()) {
+        showToast('Address is required', 'error');
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       if (isLogin) {
@@ -80,27 +99,10 @@ export default function LoginScreen({ navigation }) {
           await AsyncStorage.setItem('orgLogo', orgLogo);
         }
 
-        try {
-          const localScheduleResult = await scheduleStaticDailyReminders();
-          if (localScheduleResult?.ok && localScheduleResult?.skipped) {
-            console.log('[LoginScreen] Static reminders already scheduled');
-          } else if (localScheduleResult?.ok) {
-            showToast(`Static reminders scheduled (${localScheduleResult.scheduledCount}/day)`, 'success');
-            console.log('[LoginScreen] Static reminders scheduled', localScheduleResult);
-          } else {
-            console.log('[LoginScreen] Static reminder scheduling skipped', localScheduleResult);
-          }
-        } catch (localScheduleError) {
-          console.log('[LoginScreen] Static reminder scheduling failed', {
-            message: localScheduleError?.message || localScheduleError,
-          });
-        }
-
+        // FIX #3: Removed scheduleStaticDailyReminders() call and its toast.
+        // HomeScreen's useEffect handles scheduling once on mount.
         navigation.replace('Home');
       } else {
-        if (!organizationName.trim()) { showToast('Organization name is required', 'error'); setLoading(false); return; }
-        if (!phone.trim()) { showToast('Phone number is required', 'error'); setLoading(false); return; }
-        if (!address.trim()) { showToast('Address is required', 'error'); setLoading(false); return; }
         const res = await register(
           {
             organizationName: organizationName.trim(),

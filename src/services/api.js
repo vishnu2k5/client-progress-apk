@@ -2,7 +2,6 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
-import { showToast } from '../components/Toast';
 
 const API_URL =
   Constants?.expoConfig?.extra?.apiUrl
@@ -10,6 +9,10 @@ const API_URL =
 
 export const getApiBaseUrl = () => API_URL;
 const IS_DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : process.env.NODE_ENV !== 'production';
+
+// Sensitive paths — never log request body for these
+const SENSITIVE_PATHS = ['/auth/login', '/auth/register', '/auth/change-password', '/auth/update'];
+const isSensitivePath = (url = '') => SENSITIVE_PATHS.some((p) => url.includes(p));
 
 const api = axios.create({
   baseURL: API_URL,
@@ -25,7 +28,7 @@ export const setAuthFailureHandler = (handler) => {
   onAuthFailure = handler;
 };
 
-// Add token to requests + LOGGING
+// ─── Request interceptor — attach token + DEV logging ───────────────────────
 api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('token');
@@ -34,66 +37,58 @@ api.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
     if (IS_DEV) {
-      const reqLog = {
+      console.log(`[API_REQUEST] ${config.method?.toUpperCase()} ${config.url}`, {
         method: config.method?.toUpperCase(),
         url: config.url,
         hasAuth: !!token,
-        data: config.data,
-      };
-      console.log(`[API_REQUEST] ${config.method?.toUpperCase()} ${config.url}`, reqLog);
+        // FIX #15: never log passwords in plaintext
+        data: isSensitivePath(config.url) ? '[REDACTED]' : config.data,
+      });
     }
     return config;
   },
   (error) => {
     console.error('[API_REQUEST_ERROR]', error);
-    showToast(`❌ Request Error: ${error.message}`, 'error');
     return Promise.reject(error);
   }
 );
 
-// Handle auth errors + LOGGING
+// ─── Response interceptor — DEV logging + 401 redirect ──────────────────────
+// FIX #1: Removed showToast from interceptor — every screen handles its own
+// error messages. Showing toasts here caused double toasts on every error.
+// FIX #5: 401 now silently clears storage and redirects — no scary toast.
 api.interceptors.response.use(
   (response) => {
     if (IS_DEV) {
-      const resLog = {
-        method: response.config.method?.toUpperCase(),
-        url: response.config.url,
+      console.log(`[API_SUCCESS] ${response.config.method?.toUpperCase()} ${response.config.url}`, {
         status: response.status,
         dataPreview: typeof response.data === 'object'
           ? JSON.stringify(response.data).slice(0, 100)
           : response.data,
-      };
-      console.log(`[API_SUCCESS] ${response.config.method?.toUpperCase()} ${response.config.url}`, resLog);
+      });
     }
     return response;
   },
   async (error) => {
     if (IS_DEV) {
-      const errLog = {
-        method: error.config?.method?.toUpperCase(),
-        url: error.config?.url,
+      console.error(`[API_ERROR] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, {
         status: error.response?.status,
         message: error.message,
         serverMessage: error.response?.data?.message,
-      };
-      console.error(`[API_ERROR] ${error.config?.method?.toUpperCase()} ${error.config?.url}`, errLog);
+      });
     }
 
-    const serverMessage =
-      typeof error.response?.data?.message === 'string'
-        ? error.response.data.message
-        : error.message;
-    showToast(`❌ ${error.response?.status || 'Error'}: ${serverMessage}`, 'error');
-    
+    // FIX #5: 401 silently clears auth and redirects — no toast needed
     if (error.response?.status === 401) {
       await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       if (onAuthFailure) onAuthFailure();
     }
+
     return Promise.reject(error);
   }
 );
 
-// Auth APIs
+// ─── Auth APIs ───────────────────────────────────────────────────────────────
 export const login = (email, password) => api.post('/auth/login', { email, password });
 
 // Helper: upload with FormData via fetch (axios 1.x mangles multipart headers)
@@ -101,7 +96,6 @@ const fetchMultipart = async (path, method, formData) => {
   const token = await AsyncStorage.getItem('token');
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
-  // Do NOT set Content-Type — fetch/RN will set the correct multipart boundary
   const res = await fetch(`${API_URL}${path}`, {
     method,
     body: formData,
@@ -134,7 +128,6 @@ const buildFormData = async (data, logoFile) => {
   });
   if (logoFile) {
     if (Platform.OS === 'web') {
-      // On web, convert the URI (blob/data URL) to an actual File/Blob
       const response = await fetch(logoFile.uri);
       const blob = await response.blob();
       const fileName = logoFile.fileName || `logo-${Date.now()}.jpg`;
@@ -143,7 +136,6 @@ const buildFormData = async (data, logoFile) => {
       });
       formData.append('logo', file);
     } else {
-      // On React Native (iOS/Android), use the RN-style object
       formData.append('logo', {
         uri: logoFile.uri,
         name: logoFile.fileName || `logo-${Date.now()}.jpg`,
@@ -171,19 +163,19 @@ export const updateProfile = async (data, logoFile) => {
 export const changePassword = (currentPassword, newPassword) =>
   api.put('/auth/change-password', { currentPassword, newPassword });
 
-// Client APIs
+// ─── Client APIs ─────────────────────────────────────────────────────────────
 export const getClients = () => api.get('/clients');
 export const getClient = (id) => api.get(`/clients/${id}`);
 export const addClient = (clientName) => api.post('/add/clients', { clientName });
 export const updateClient = (id, clientName) => api.put(`/update/client/${id}`, { clientName });
 export const deleteClient = (id) => api.delete(`/delete/client/${id}`);
 
-// Progress APIs
+// ─── Progress APIs ────────────────────────────────────────────────────────────
 export const getProgress = (clientId) => api.get(`/progress?clientId=${clientId}`);
 export const getAllProgress = () => api.get('/progress');
 export const updateProgress = (clientId, data) => api.put(`/update/progress?clientId=${clientId}`, data);
 
-// Organization APIs (public)
+// ─── Organization APIs (public) ───────────────────────────────────────────────
 export const getOrganizations = () => api.get('/organizations');
 export const getOrganization = (id) => api.get(`/organizations/${id}`);
 

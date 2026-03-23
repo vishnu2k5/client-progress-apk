@@ -47,12 +47,12 @@ export default function HomeScreen({ navigation }) {
     return clients.filter((c) => c.clientName.toLowerCase().includes(query));
   }, [clients, search]);
 
-  // ✅ FIX: Schedule notifications ONCE on mount only — not on every screen focus
+  // Schedule notifications ONCE on mount — not on every screen focus
   useEffect(() => {
     scheduleStaticDailyReminders();
   }, []);
 
-  // ✅ FIX: useFocusEffect only handles data loading — no scheduling here
+  // useFocusEffect only handles data loading
   useFocusEffect(
     useCallback(() => {
       setAuthFailureHandler(() => navigation.replace('Login'));
@@ -61,7 +61,36 @@ export default function HomeScreen({ navigation }) {
     }, [navigation])
   );
 
-  const loadData = async () => {
+  // FIX #10: useCallback so loadClients is stable across renders
+  const loadClients = useCallback(async () => {
+    try {
+      const [clientsRes, progressRes] = await Promise.all([getClients(), getAllProgress()]);
+      const deliveredMap = {};
+      const updateInfoMap = {};
+      progressRes.data.forEach((p) => {
+        const cId = p.clientId?._id || p.clientId;
+        if (cId) {
+          deliveredMap[cId] = !!p.delivered;
+          updateInfoMap[cId] = getLastUpdateInfo(p);
+        }
+      });
+      const merged = clientsRes.data.map((c) => ({
+        ...c,
+        delivered: deliveredMap[c._id] || false,
+        updateInfo: updateInfoMap[c._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
+      }));
+      setClients(merged);
+    } catch (error) {
+      if (error.response?.status === 401) navigation.replace('Login');
+      else showToast('Error loading clients', 'error');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [navigation]);
+
+  // FIX #10: useCallback so loadData is stable across renders
+  const loadData = useCallback(async () => {
     try {
       const [name, logo, appLogo] = await Promise.all([
         AsyncStorage.getItem('orgName'),
@@ -93,39 +122,11 @@ export default function HomeScreen({ navigation }) {
         }
       } catch {}
 
-      // ✅ FIX: Removed scheduleStaticDailyReminders() from here
       await loadClients();
     } catch (error) {
       showToast('Error loading data', 'error');
     }
-  };
-
-  const loadClients = async () => {
-    try {
-      const [clientsRes, progressRes] = await Promise.all([getClients(), getAllProgress()]);
-      const deliveredMap = {};
-      const updateInfoMap = {};
-      progressRes.data.forEach((p) => {
-        const cId = p.clientId?._id || p.clientId;
-        if (cId) {
-          deliveredMap[cId] = !!p.delivered;
-          updateInfoMap[cId] = getLastUpdateInfo(p);
-        }
-      });
-      const merged = clientsRes.data.map((c) => ({
-        ...c,
-        delivered: deliveredMap[c._id] || false,
-        updateInfo: updateInfoMap[c._id] || { lastUpdateDate: null, daysAgo: Infinity, isOverdue: true },
-      }));
-      setClients(merged);
-    } catch (error) {
-      if (error.response?.status === 401) navigation.replace('Login');
-      else showToast('Error loading clients', 'error');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
+  }, [loadClients]);
 
   const handleAddClient = useCallback(async () => {
     if (!newClientName.trim()) {
@@ -140,7 +141,7 @@ export default function HomeScreen({ navigation }) {
     } catch (error) {
       showToast(error.response?.data?.message || 'Error adding client', 'error');
     }
-  }, [newClientName]);
+  }, [newClientName, loadClients]);
 
   const handleLogout = useCallback(() => {
     const doLogout = async () => {
@@ -222,10 +223,16 @@ export default function HomeScreen({ navigation }) {
           <Text style={[styles.orgName, { color: t.text }]}>{orgName}</Text>
         </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity style={[styles.profileBtn, { backgroundColor: t.accentLight }]} onPress={() => navigation.navigate('Profile')}>
+          <TouchableOpacity
+            style={[styles.profileBtn, { backgroundColor: t.accentLight }]}
+            onPress={() => navigation.navigate('Profile')}
+          >
             <Text style={styles.profileText}>👤</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.logoutBtn, { backgroundColor: t.dangerBg }]} onPress={handleLogout}>
+          <TouchableOpacity
+            style={[styles.logoutBtn, { backgroundColor: t.dangerBg }]}
+            onPress={handleLogout}
+          >
             <MaterialIcons name="logout" size={22} color={t.danger} />
           </TouchableOpacity>
         </View>

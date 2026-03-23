@@ -1,7 +1,7 @@
 /**
- * Calculate last update date for a client from progress data
- * @param {Object} progressData - The progress data object
- * @returns {Object} { lastUpdateDate: Date|null, daysAgo: number, isOverdue: boolean }
+ * Calculate last update date for a client from progress data.
+ * @param {Object} progressData
+ * @returns {{ lastUpdateDate: Date|null, daysAgo: number, isOverdue: boolean }}
  */
 const MIN_DAYS_FOR_REMINDER = 2;
 
@@ -19,22 +19,19 @@ export const getLastUpdateInfo = (progressData) => {
 
   const fromStageDate = (value) => {
     if (!value || typeof value !== 'string') return null;
-    // Supports YYYY/MM/DD and YYYY-MM-DD formats.
+    // Supports YYYY/MM/DD and YYYY-MM-DD formats
     const normalized = value.replace(/\//g, '-');
     return toTimestamp(normalized);
   };
 
-  // Get all possible update timestamps from stage fields and document fields.
   const timestamps = [];
   const stages = ['Lead', 'firstContact', 'followUp', 'RFQ', 'quote', 'quoteFollowUp', 'order'];
 
   stages.forEach((stage) => {
     const stageData = progressData[stage];
     if (!stageData) return;
-
     const stageUpdatedAtTs = toTimestamp(stageData.updatedAt);
     const stageDateTs = fromStageDate(stageData.date);
-
     if (stageUpdatedAtTs) timestamps.push(stageUpdatedAtTs);
     if (stageDateTs) timestamps.push(stageDateTs);
   });
@@ -62,7 +59,7 @@ export const getLastUpdateInfo = (progressData) => {
 };
 
 /**
- * Format days ago into human-readable string
+ * Format days ago into human-readable string.
  * @param {number} daysAgo
  * @returns {string}
  */
@@ -76,21 +73,24 @@ export const formatDaysAgo = (daysAgo) => {
 };
 
 /**
- * Get notification badge style info
+ * Get the overdue badge style.
+ * FIX #11: Removed dead code — the green "Updated" style was computed but
+ * never rendered anywhere (badge only shows when showReminder is true).
  * @param {boolean} isOverdue
- * @returns {Object} { color, bgColor, text }
+ * @returns {{ color: string, bgColor: string, text: string }}
  */
 export const getNotificationStyle = (isOverdue) => {
   if (isOverdue) {
     return {
-      color: '#e74c3c', // Red
-      bgColor: '#fadbd8', // Light red
+      color: '#e74c3c',
+      bgColor: '#fadbd8',
       text: 'Needs update',
     };
   }
+  // Kept for API compatibility — returned but not visually rendered
   return {
-    color: '#27ae60', // Green
-    bgColor: '#d5f4e6', // Light green
+    color: '#27ae60',
+    bgColor: '#d5f4e6',
     text: 'Updated',
   };
 };
