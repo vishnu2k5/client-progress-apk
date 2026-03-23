@@ -1,8 +1,10 @@
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 
 const LAST_STALE_NOTIFICATION_KEY = 'lastStaleNotificationAt';
+const EXPO_PUSH_TOKEN_KEY = 'expoPushToken';
 const STALE_NOTIFICATION_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 hours
 
 const ensureAndroidChannel = async () => {
@@ -17,6 +19,8 @@ const ensureAndroidChannel = async () => {
 };
 
 export const ensureNotificationPermission = async () => {
+  if (Platform.OS === 'web') return false;
+
   const settings = await Notifications.getPermissionsAsync();
   let status = settings.status;
 
@@ -29,6 +33,35 @@ export const ensureNotificationPermission = async () => {
 
   await ensureAndroidChannel();
   return true;
+};
+
+const getProjectId = () => {
+  const fromExpoConfig = Constants?.expoConfig?.extra?.eas?.projectId;
+  const fromEasConfig = Constants?.easConfig?.projectId;
+  return fromExpoConfig || fromEasConfig || undefined;
+};
+
+export const getStoredExpoPushToken = async () => AsyncStorage.getItem(EXPO_PUSH_TOKEN_KEY);
+
+export const getExpoPushToken = async () => {
+  const hasPermission = await ensureNotificationPermission();
+  if (!hasPermission) return null;
+
+  const projectId = getProjectId();
+  const tokenResponse = projectId
+    ? await Notifications.getExpoPushTokenAsync({ projectId })
+    : await Notifications.getExpoPushTokenAsync();
+
+  const expoPushToken = tokenResponse?.data || null;
+  if (expoPushToken) {
+    await AsyncStorage.setItem(EXPO_PUSH_TOKEN_KEY, expoPushToken);
+  }
+
+  return expoPushToken;
+};
+
+export const clearStoredExpoPushToken = async () => {
+  await AsyncStorage.removeItem(EXPO_PUSH_TOKEN_KEY);
 };
 
 const canSendStaleNotification = async () => {

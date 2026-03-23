@@ -126,6 +126,13 @@ export const getProgress = (clientId) => api.get(`/progress?clientId=${clientId}
 export const getAllProgress = () => api.get('/progress');
 export const updateProgress = (clientId, data) => api.put(`/update/progress?clientId=${clientId}`, data);
 
+// Notification APIs
+export const registerNotificationDevice = (platform, expoPushToken) =>
+  api.post('/notifications/register-device', { platform, expoPushToken });
+export const unregisterNotificationDevice = (expoPushToken) =>
+  api.delete('/notifications/register-device', { data: { expoPushToken } });
+export const sendNotificationTest = () => api.post('/notifications/test');
+
 // Organization APIs (public)
 export const getOrganizations = () => api.get('/organizations');
 export const getOrganization = (id) => api.get(`/organizations/${id}`);

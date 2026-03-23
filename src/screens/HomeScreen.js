@@ -16,11 +16,24 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { getClients, addClient, getAllProgress, setAuthFailureHandler, getMe } from '../services/api';
+import {
+  getClients,
+  addClient,
+  getAllProgress,
+  setAuthFailureHandler,
+  getMe,
+  registerNotificationDevice,
+  unregisterNotificationDevice,
+} from '../services/api';
 import { showToast } from '../components/Toast';
 import { useTheme } from '../context/ThemeContext';
 import { getLastUpdateInfo, formatDaysAgo, getNotificationStyle } from '../services/notificationService';
-import { notifyStaleProgress } from '../services/localNotifications';
+import {
+  notifyStaleProgress,
+  getExpoPushToken,
+  getStoredExpoPushToken,
+  clearStoredExpoPushToken,
+} from '../services/localNotifications';
 
 export default function HomeScreen({ navigation }) {
   const t = useTheme();
@@ -80,8 +93,19 @@ export default function HomeScreen({ navigation }) {
       } catch {}
 
       await loadClients();
+      await syncNotificationRegistration();
     } catch (error) {
       showToast('Error loading data', 'error');
+    }
+  };
+
+  const syncNotificationRegistration = async () => {
+    try {
+      const expoPushToken = await getExpoPushToken();
+      if (!expoPushToken) return;
+      await registerNotificationDevice(Platform.OS, expoPushToken);
+    } catch {
+      // Keep app usable even if push registration fails.
     }
   };
 
@@ -134,6 +158,15 @@ export default function HomeScreen({ navigation }) {
 
   const handleLogout = useCallback(() => {
     const doLogout = async () => {
+      try {
+        const storedToken = await getStoredExpoPushToken();
+        if (storedToken) {
+          await unregisterNotificationDevice(storedToken);
+        }
+      } catch {
+      } finally {
+        await clearStoredExpoPushToken();
+      }
       await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       navigation.replace('Login');
     };
