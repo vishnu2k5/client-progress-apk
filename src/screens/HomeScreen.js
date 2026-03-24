@@ -30,7 +30,7 @@ import {
   scheduleStaticDailyReminders,
   clearStaticDailyReminders,
 } from '../services/localNotifications';
-import { unregisterBackgroundNotificationTask } from '../services/backgroundTask';
+import { unregisterBackgroundNotificationTask } from '../services/backgroundtask';
 //                                                              ^^^^^^^^^^^^^^ ✅ capital T
 
 export default function HomeScreen({ navigation }) {
