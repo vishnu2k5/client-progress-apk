@@ -9,9 +9,14 @@ import ProgressScreen from '../screens/ProgressScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 
+// FIX: Import background task registration
+// The defineTask call lives inside backgroundTask.js at the module level —
+// importing this file is enough to register the task definition with TaskManager
+import { registerBackgroundNotificationTask } from '../services/backgroundTask';
+
 const Stack = createNativeStackNavigator();
 
-// FIX #4: Set how notifications appear when app is FOREGROUND
+// Set how notifications appear when app is in FOREGROUND
 // Without this, all notifications are silently dropped when the app is open
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -25,7 +30,11 @@ export default function AppNavigator() {
   const navigationRef = useRef(null);
 
   useEffect(() => {
-    // FIX #4: Handle notification taps — navigate to Home screen
+    // Register the OS background task so notifications are rescheduled
+    // automatically after phone reboot — without needing to open the app
+    registerBackgroundNotificationTask();
+
+    // Handle notification taps — navigate to Home screen
     const responseSub = Notifications.addNotificationResponseReceivedListener(() => {
       if (navigationRef.current?.isReady()) {
         navigationRef.current.navigate('Home');
@@ -44,7 +53,7 @@ export default function AppNavigator() {
         screenOptions={{
           headerShown: false,
           animation: 'slide_from_right',
-          gestureEnabled: true, // FIX #13: enable back gesture
+          gestureEnabled: true,
         }}
       >
         <Stack.Screen name="Login" component={LoginScreen} />

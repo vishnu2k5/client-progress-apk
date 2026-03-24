@@ -30,6 +30,7 @@ import {
   scheduleStaticDailyReminders,
   clearStaticDailyReminders,
 } from '../services/localNotifications';
+import { unregisterBackgroundNotificationTask } from '../services/Backgroundtask.js';
 
 export default function HomeScreen({ navigation }) {
   const t = useTheme();
@@ -47,12 +48,11 @@ export default function HomeScreen({ navigation }) {
     return clients.filter((c) => c.clientName.toLowerCase().includes(query));
   }, [clients, search]);
 
-  // Schedule notifications ONCE on mount — not on every screen focus
+  // Schedule notifications ONCE on mount only
   useEffect(() => {
     scheduleStaticDailyReminders();
   }, []);
 
-  // useFocusEffect only handles data loading
   useFocusEffect(
     useCallback(() => {
       setAuthFailureHandler(() => navigation.replace('Login'));
@@ -61,7 +61,6 @@ export default function HomeScreen({ navigation }) {
     }, [navigation])
   );
 
-  // FIX #10: useCallback so loadClients is stable across renders
   const loadClients = useCallback(async () => {
     try {
       const [clientsRes, progressRes] = await Promise.all([getClients(), getAllProgress()]);
@@ -89,7 +88,6 @@ export default function HomeScreen({ navigation }) {
     }
   }, [navigation]);
 
-  // FIX #10: useCallback so loadData is stable across renders
   const loadData = useCallback(async () => {
     try {
       const [name, logo, appLogo] = await Promise.all([
@@ -100,7 +98,6 @@ export default function HomeScreen({ navigation }) {
       setOrgName(name || 'Organization');
       setOrgLogo(logo || appLogo || null);
 
-      // Refresh org info from server (logo may have changed on profile)
       try {
         const meRes = await getMe();
         const org = meRes.data.organization;
@@ -145,7 +142,9 @@ export default function HomeScreen({ navigation }) {
 
   const handleLogout = useCallback(() => {
     const doLogout = async () => {
+      // Cancel notifications + background task on logout
       await clearStaticDailyReminders();
+      await unregisterBackgroundNotificationTask();
       await AsyncStorage.multiRemove(['token', 'orgName', 'orgLogo']);
       navigation.replace('Login');
     };
