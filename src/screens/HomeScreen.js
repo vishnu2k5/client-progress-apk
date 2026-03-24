@@ -30,7 +30,7 @@ import {
   scheduleStaticDailyReminders,
   clearStaticDailyReminders,
 } from '../services/localNotifications';
-import { unregisterBackgroundNotificationTask } from '../services/Backgroundtask';
+import { unregisterBackgroundNotificationTask } from '../services/backgroundtask';
 
 export default function HomeScreen({ navigation }) {
   const t = useTheme();
